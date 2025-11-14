@@ -43,10 +43,8 @@ import { exists } from './playwright-invoke';
 import * as path from 'path';
 import { CoverageReport, CoverageReportOptions } from 'monocart-coverage-reports';
 import { ServerWritableStream } from '@grpc/grpc-js';
-import { pino } from 'pino';
+import { logger } from './browser_logger';
 import strip from 'strip-comments';
-
-const logger = pino({ timestamp: pino.stdTimeFunctions.isoTime });
 
 function lastItem<T>(array: T[]): T | undefined {
     return array[array.length - 1];
@@ -96,7 +94,7 @@ export async function initializeExtension(
     state: PlaywrightState,
 ): Promise<Response.Keywords> {
     logger.info(`Initializing extension: ${request.getPath()}`);
-    const extension: Record<string, (...args: unknown[]) => unknown> = eval('require')(request.getPath());
+    const extension: Record<string, (...args: unknown[]) => unknown> = require(request.getPath()); // eslint-disable-line
     state.extensions.push(extension);
     const kws = Object.keys(extension).filter((key) => extension[key] instanceof Function && !key.startsWith('__'));
     logger.info(`Adding ${kws.length} keywords from JS Extension`);
@@ -227,6 +225,7 @@ async function _createIndexedContext(
 ): Promise<IndexedContext> {
     const contextId = `context=${uuidv4()}`;
     if (defaultTimeout) {
+        logger.info(`Setting default timeout for context ${contextId} to ${defaultTimeout}`);
         context.setDefaultTimeout(defaultTimeout);
     }
     if (traceFile) {
@@ -335,13 +334,14 @@ export class PlaywrightState {
         timeout: number | undefined,
     ): Promise<IBrowserState> {
         const currentBrowser = this.activeBrowser;
-        logger.info('currentBrowser: ' + currentBrowser);
         if (currentBrowser === undefined) {
+            logger.info('No active browser, creating a new one');
             const browserAndConfs = await _newBrowser(browserType || 'chromium', true, timeout);
             const newState = new BrowserState(browserAndConfs);
             this.browserStack.push(newState);
             return { browser: newState, newBrowser: true };
         } else {
+            logger.info(`currentBrowser: ${JSON.stringify(currentBrowser)}`);
             return { browser: currentBrowser, newBrowser: false };
         }
     }
@@ -616,7 +616,7 @@ export class BrowserState {
                 throw new Error('Tried to switch to context, which did not exist anymore.');
             }
             this._contextStack.push(newContext);
-            logger.info('Changed active context');
+            logger.info(`Changed active context: ${newContext.id}`);
         } else logger.info('Set active context to undefined');
     }
 
@@ -980,7 +980,8 @@ export async function switchPage(
         const previous = browserState.page?.id || 'NO PAGE OPEN';
         browserState.page?.p.bringToFront();
         return stringResponse(previous, 'Returned active page id');
-    } else if (id === 'NEW') {
+    }
+    if (id === 'NEW') {
         const previous = browserState.page?.id || 'NO PAGE OPEN';
         const previousTime = browserState.page?.timestamp || 0;
         const latest = await findLatestPageAfter(previousTime, request.getTimeout(), context);
@@ -1135,12 +1136,19 @@ async function _saveCoverageReport(activeIndexedPage: IndexedPage): Promise<Resp
     } else {
         logger.info('v8 coverage disabled');
     }
-
-    const mcr = new CoverageReport(options);
-    if (configFile) {
-        logger.info({ 'Config file: ': configFile });
-        await mcr.loadConfig(configFile);
+    let mergedOptions: CoverageReportOptions;
+    if (fs.existsSync(configFile)) {
+        logger.info({ 'Config file exists: ': configFile });
+        const configFileModule = require(configFile);  // eslint-disable-line
+        mergedOptions = { ...configFileModule, ...options };
+        console.log({ 'Merged options: ': mergedOptions });
+    } else {
+        console.log({ 'No config file found': configFile });
+        mergedOptions = { ...options };
     }
+
+    const mcr = new CoverageReport(mergedOptions);
+
     await mcr.add(allCoverage);
     await mcr.generate();
     let message = 'Coverage stopped and report generated';
@@ -1148,4 +1156,56 @@ async function _saveCoverageReport(activeIndexedPage: IndexedPage): Promise<Resp
         message += `. But no config file found at ${configFile}`;
     }
     return stringResponse(outputDir, message);
+}
+
+// eslint-disable-next-line
+export async function mergeCoverage(request: Request.CoverageMerge, state: PlaywrightState): Promise<Response.Empty> {
+    state.getActivePage(); // just to check if a browser is open
+    const inputFolder = request.getInputFolder();
+    const outputFolder = request.getOutputFolder();
+    const configFile = request.getConfig();
+    const name = request.getName();
+    const reports = request.getReportsList();
+    if (!inputFolder) {
+        throw Error('No input folders specified');
+    }
+    if (!outputFolder) {
+        throw Error('No output folder specified');
+    }
+    const options: CoverageReportOptions = {
+        name: name,
+        inputDir: inputFolder,
+        outputDir: outputFolder,
+    };
+    logger.info(`Reports to generate: ${reports}`);
+    if (reports && reports.length > 0) {
+        options.reports = reports.map((r) => [r]);
+    }
+    const defaultName = 'Browser library Merged Coverage Report';
+    let mergedOptions: CoverageReportOptions;
+    if (fs.existsSync(configFile)) {
+        logger.info(`Config file exists:  ${configFile}`);
+        const configFileModule = await eval('require')(configFile);
+        logger.info(`configFileModule options: ${JSON.stringify(configFileModule)}`);
+        mergedOptions = { ...configFileModule, ...options };
+        if (reports && reports.length === 1 && reports[0] === 'v8') {
+            mergedOptions.reports = [['v8'], configFileModule.reports || []].flat();
+        }
+        if (mergedOptions.name === '' && configFileModule.name) {
+            mergedOptions.name = configFileModule.name;
+        } else {
+            mergedOptions.name = defaultName;
+        }
+        logger.info(`Merged options: ${JSON.stringify(mergedOptions)}`);
+    } else {
+        logger.info(`No config file found: ${configFile}`);
+        mergedOptions = { ...options };
+        if (mergedOptions.name === '') {
+            mergedOptions.name = defaultName;
+        }
+    }
+    logger.info(`Final options: ${JSON.stringify(mergedOptions)}`);
+    logger.info(`Merging coverage from ${inputFolder} into ${outputFolder}`);
+    await new CoverageReport(mergedOptions).generate();
+    return emptyWithLog(`Coverage merged from ${inputFolder} into ${outputFolder}`);
 }

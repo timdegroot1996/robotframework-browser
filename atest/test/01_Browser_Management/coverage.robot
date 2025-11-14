@@ -145,7 +145,7 @@ Run Rfbrowser To Combine Coverage Reports And No Raw Files
     ...    shell=True
     Log    ${process.stdout}
     Log    ${process.stderr}
-    Should Be Equal As Integers    ${process.rc}    2
+    Should Be Equal As Integers    ${process.rc}    1
 
 Run Rfbrowser To Combine Coverage Reports And Invalid Config File
     Create Directory    ${OUTPUT_DIR}/no_raw_files
@@ -168,6 +168,106 @@ No Config File
     ...    ${coverage_file}
     ...    ${{ pathlib.Path($OUTPUT_DIR) / "browser" / "coverage" / $PAGE_ID / "index.html" }}
     File Should Not Be Empty    ${coverage_file}
+
+Merge Coverage Reports With Keyword
+    Start Coverage    raw=True
+    Go To    ${LOGIN_URL}
+    Click    id=delayed_request_big
+    ${coverage_folder} =    Stop Coverage
+    New Page    ${LOGIN_URL}
+    Start Coverage    raw=True
+    Click    id=delayed_request
+    ${coverage_folder} =    Stop Coverage
+    ${combined_folder} =    Merge Coverage Reports
+    ...    ${OUTPUT_DIR}/browser/coverage
+    ...    ${OUTPUT_DIR}/merge_coverage_reports_keyword_0
+    Directory Should Not Be Empty    ${combined_folder}
+    ${uri} =    File As Uri    ${combined_folder}/index.html
+    New Page    ${uri}
+    Get Text    .mcr-title    equal    Browser library Merged Coverage Report
+    Close Page
+    ${combined_folder} =    Merge Coverage Reports
+    ...    ${OUTPUT_DIR}/browser/coverage
+    ...    ${OUTPUT_DIR}/merge_coverage_reports_keyword_1
+    ...    name=Custom Merged Name
+    Directory Should Not Be Empty    ${combined_folder}
+    ${uri} =    File As Uri    ${combined_folder}/index.html
+    New Page    ${uri}
+    Get Text    .mcr-title    equal    Custom Merged Name
+    Close Page
+    ${combined_folder} =    Merge Coverage Reports
+    ...    ${OUTPUT_DIR}/browser/coverage
+    ...    ${OUTPUT_DIR}/merge_coverage_reports_keyword_11
+    ...    name=Custom Merged Name
+    ...    reports=["markdown-summary", "markdown-details"]
+    ${files} =    List Files In Directory    ${combined_folder}
+    Length Should Be    ${files}    2
+    ${data} =    Get File    ${combined_folder}/${files}[1]
+    FOR    ${word}    IN    \# Custom Merged Name    Name    Coverage %    Covered    Uncovered    Total
+        Should Contain    ${data}    ${word}
+    END
+    ${data} =    Get File    ${combined_folder}/${files}[0]
+    FOR    ${word}    IN    \## Custom Merged Name    Name    Bytes    Statements    Branches    Functions    Lines    Uncovered Lines    overlay.html    Summary
+        Should Contain    ${data}    ${word}
+    END
+
+Merge Coverage Reports No Raw Reports
+    Create Directory    ${OUTPUT_DIR}/no_raw_files_keyword
+    TRY
+        Merge Coverage Reports
+        ...    ${OUTPUT_DIR}/no_raw_files_keyword
+        ...    ${OUTPUT_DIR}/merge_coverage_reports_keyword_2
+    EXCEPT    FileNotFoundError: No raw reports found from *    type=GLOB    AS    ${error}
+        Log    Caught expected error ${error}
+    END
+
+Merge Coverage Reports No Config File
+    Create Directory    ${OUTPUT_DIR}/no_raw_files_keyword
+    TRY
+        Merge Coverage Reports
+        ...    ${OUTPUT_DIR}/browser/coverage
+        ...    ${OUTPUT_DIR}/merge_coverage_reports_keyword_3
+        ...    config=${CURDIR}/not_here.js
+    EXCEPT    FileNotFoundError: Configuration file *not_here.js does not exist    type=GLOB    AS    ${error}
+        Log    Caught expected error ${error}
+    END
+
+Merge Coverage Reports Output Dir Does Exist
+    [Documentation]    ...
+    ...    LOG 2:3    WARN    Output folder ${OUTPUT_DIR}${/}merge_coverage_reports_keyword_4 already exists, deleting it first
+    Create Directory    ${OUTPUT_DIR}/merge_coverage_reports_keyword_4
+    Merge Coverage Reports
+    ...    ${OUTPUT_DIR}/browser/coverage
+    ...    ${OUTPUT_DIR}/merge_coverage_reports_keyword_4
+
+Merge Coverage Reports Config File
+    ${combined_folder} =    Merge Coverage Reports
+    ...    ${OUTPUT_DIR}/browser/coverage
+    ...    ${OUTPUT_DIR}/merge_coverage_reports_keyword_5
+    ...    config_file=${CURDIR}/coverageConfigMD.js
+    Directory Should Not Be Empty    ${combined_folder}
+    ${uri} =    File As Uri    ${combined_folder}/index.html
+    New Page    ${uri}
+    Get Text    .mcr-title    equal    Browser library Coverage Report MD
+    Close Page
+
+Merge Coverage Reports Invalid Config File
+    TRY
+        ${combined_folder} =    Merge Coverage Reports
+        ...    ${OUTPUT_DIR}/browser/coverage
+        ...    ${OUTPUT_DIR}/merge_coverage_reports_keyword_6
+        ...    config_file=${CURDIR}/coverageConfigInvalid.js
+    EXCEPT    SyntaxError: Unexpected token '}'    type=GLOB    AS    ${error}
+        Log    Caught expected error ${error}
+    END
+    TRY
+        ${combined_folder} =    Merge Coverage Reports
+        ...    ${OUTPUT_DIR}/browser/coverage
+        ...    ${OUTPUT_DIR}/merge_coverage_reports_keyword_7
+        ...    config_file=${CURDIR}/coverageConfigInvalid.txt
+    EXCEPT    SyntaxError: Unexpected identifier 'is'    type=GLOB    AS    ${error}
+        Log    Caught expected error ${error}
+    END
 
 *** Keywords ***
 Open Page And Store ID

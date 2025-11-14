@@ -14,60 +14,44 @@
 
 import contextlib
 import json
-import os
-import re
 import shutil
 import subprocess
 import sys
 import traceback
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
+from urllib.parse import urlparse
 
 import click
-import seedir  # type: ignore
+
+from Browser.utils.data_types import (
+    AutoClosingLevel,
+    InstallableBrowser,
+    InstallationOptions,
+    InstallationOptionsHelp,
+    SupportedBrowsers,
+)
 
 from .constant import (
     INSTALLATION_DIR,
-    IS_TERMINAL,
     NODE_MODULES,
-    PLAYWRIGHT_BROWSERS_PATH,
     SHELL,
+    ensure_playwright_browsers_path,
+    get_browser_lib,
     log,
     write_marker,
 )
 from .coverage_combine import combine
 from .get_versions import print_version
+from .rfbrowser_init import log_install_dir, rfbrowser_init
 from .transform import transform as tidy_transform
 from .translation import compare_translation, get_library_translation
 
 if TYPE_CHECKING:
     from ..browser import Browser
-try:
-    import pty
 
-    has_pty = True
-except ImportError:
-    has_pty = False
 
 CONTEXT_SETTINGS = {"help_option_names": ["-h", "--help"]}
-ANSI_ESCAPE = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])", flags=re.IGNORECASE)
-PROGRESS_MATCHER = re.compile(
-    r"(?P<size>\d+(?:\.\d+)*\s\w*B)\s\[\]\s(?P<percent>\d+)(?P<time>%\s.+)"
-)
-PROGRESS_SIZE = 50
-
-
-def _process_poller(process: subprocess.Popen, silent_mode: bool):
-    while process.poll() is None:
-        if process.stdout:
-            output = process.stdout.readline().decode("UTF-8")
-            log(output, silent_mode)
-
-    if process.returncode != 0:
-        raise RuntimeError(
-            "Problem installing node dependencies."
-            f"Node process returned with exit status {process.returncode}"
-        )
 
 
 def _python_info():
@@ -88,200 +72,12 @@ def _python_info():
     write_marker()
 
 
-def _check_files_and_access():
-    if not (INSTALLATION_DIR / "package.json").is_file():
-        log(
-            f"Installation directory `{INSTALLATION_DIR}` does not contain the required package.json "
-            "\nPrinting contents:\n"
-        )
-        log(f"\n{_walk_install_dir()}")
-        raise RuntimeError("Could not find robotframework-browser's package.json")
-    if not os.access(INSTALLATION_DIR, os.W_OK):
-        sys.tracebacklimit = 0
-        raise RuntimeError(
-            f"`rfbrowser init` needs write permissions to {INSTALLATION_DIR}"
-        )
-
-
-def _check_npm():
-    try:
-        subprocess.run(
-            ["npm", "-v"], stdout=subprocess.DEVNULL, check=True, shell=SHELL
-        )
-    except (
-        subprocess.CalledProcessError,
-        FileNotFoundError,
-        PermissionError,
-    ) as exception:
-        log(
-            "Couldn't execute npm. Please ensure you have node.js and npm installed and in PATH."
-            "See https://nodejs.org/ for documentation"
-        )
-        raise exception
-
-
-def _unix_process_executor_with_bar(command, cwd=None, silent_mode=False):
-    if not has_pty:
-        return
-    master_fd, slave_fd = pty.openpty()
-    process = subprocess.Popen(
-        command,
-        shell=True,
-        cwd=cwd,
-        stdout=slave_fd,
-        stderr=slave_fd,
-        stdin=subprocess.PIPE,
-        close_fds=True,
-    )
-    os.close(slave_fd)
-    last_file_msg = ""
-
-    while True:
-        try:
-            output = os.read(master_fd, 1024)
-            if not output:  # End of output
-                break
-            if silent_mode:
-                continue
-            with contextlib.suppress(UnicodeDecodeError):
-                message = output.decode("utf-8", errors="backslashreplace")
-            if os.name == "nt":
-                message = re.sub(r"[^\x00-\x7f]", r" ", message)
-            last_file_msg = log_progress_update(last_file_msg, message)
-        except OSError:
-            break
-    os.close(master_fd)
-    process.wait()
-
-    if process.returncode != 0:
-        raise RuntimeError(
-            f"Problem installing node dependencies. "
-            f"Process returned with exit status {process.returncode}"
-        )
-
-
-def log_progress_update(last_file_msg, message):
-    try:
-        message, file_msg = format_progress_bar(message)
-        if IS_TERMINAL:
-            print(message, end="", flush=True)  # noqa: T201
-        if file_msg.strip() and last_file_msg.split("%")[0] != file_msg.split("%")[0]:
-            log(file_msg.strip("\n"))
-            return file_msg
-        return last_file_msg
-    except Exception as error:
-        log(f"Could not log line, suppress error {error}")
-
-
-def format_progress_bar(message: str) -> tuple[str, str]:
-    progress_match = PROGRESS_MATCHER.search(message)
-    if progress_match:
-        size = progress_match.group("size")
-        percent = progress_match.group("percent")
-        time = progress_match.group("time")
-        with contextlib.suppress(Exception):
-            file_msg = ANSI_ESCAPE.sub(
-                "",
-                (
-                    f"total: {size}, progress: {percent}{time}"
-                    if int(percent) % 20 == 0
-                    else ""
-                ),
-            )
-            bar = "=" * (int(percent) // (100 // PROGRESS_SIZE))
-            message = message.replace(
-                " [] ", f" [{bar}{' ' * (PROGRESS_SIZE - len(bar))}] ", 1
-            )
-    else:
-        file_msg = ANSI_ESCAPE.sub("", message)
-    return message, file_msg
-
-
-def _rfbrowser_init(
-    skip_browser_install: bool, silent_mode: bool, with_deps: bool, browser: list
-):
-    log("Installing node dependencies...", silent_mode)
-    _check_files_and_access()
-    _check_npm()
-    log(f"Installing rfbrowser node dependencies at {INSTALLATION_DIR}", silent_mode)
-    if skip_browser_install:
-        os.environ["PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD"] = "1"
-    elif not os.environ.get(PLAYWRIGHT_BROWSERS_PATH):
-        os.environ[PLAYWRIGHT_BROWSERS_PATH] = "0"
-
-    process = subprocess.Popen(
-        "npm ci --production --parseable true --progress false",
-        shell=True,
-        cwd=INSTALLATION_DIR,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-    )
-    _process_poller(process, silent_mode)
-
-    if not skip_browser_install:
-        cmd = "npx --quiet playwright install"
-        browser_as_str = " ".join(browser)
-        if browser_as_str:
-            browser_as_str = f"{browser_as_str} "
-            cmd = f"{cmd} {browser_as_str}"
-        if with_deps:
-            cmd = f"{cmd.strip(' ')} --with-deps"
-
-        pw_browser_path = os.environ.get(PLAYWRIGHT_BROWSERS_PATH)
-        with contextlib.suppress(ValueError):
-            pw_browser_path = int(pw_browser_path)  # type: ignore
-        install_dir = pw_browser_path if pw_browser_path else INSTALLATION_DIR
-        log(
-            f"Installing browser {browser_as_str}binaries to {install_dir}",
-            silent_mode,
-        )
-        log(cmd, silent_mode)
-        if has_pty:
-            _unix_process_executor_with_bar(
-                cmd,
-                cwd=INSTALLATION_DIR,
-                silent_mode=silent_mode,
-            )
-        else:
-            process = subprocess.Popen(
-                cmd,
-                shell=True,
-                cwd=INSTALLATION_DIR,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-            )
-            _process_poller(process, silent_mode)
-    log("rfbrowser init completed", silent_mode)
-
-
-def _walk_install_dir():
-    return seedir.seedir(
-        INSTALLATION_DIR,
-        indent=4,
-        printout=False,
-        exclude_folders=["__pycache__", ".git"],
-        depthlimit=4,
-        itemlimit=(None, 5),
-    )
-
-
 def _node_info():
     process = subprocess.run(  # noqa: PLW1510
         ["npm", "-v"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=SHELL
     )
     log("npm version is:n")
     log(process.stdout.decode("UTF-8"))
-    write_marker()
-
-
-def _log_install_dir(error_msg=True):
-    if error_msg:
-        log(
-            f"Installation directory `{INSTALLATION_DIR!s}` does not contain the required files for. "
-            "unknown reason. Investigate the npm output and fix possible problems."
-            "\nPrinting contents:\n"
-        )
-    log(f"\n{_walk_install_dir()}")
     write_marker()
 
 
@@ -315,6 +111,7 @@ def cli(ctx, silent):
     \b
     Possible commands are:
     init
+    install
     clean-node
     coverage
     show-trace
@@ -329,6 +126,12 @@ def cli(ctx, silent):
     1) pip install robotframework-browser
     2) rfbrowser init.
 
+    install command will install the Playwright browsers. This command is needed when you install both Browser and
+    BrowserBatteries libraries. Example:
+    \b
+    1) pip install robotframework-browser robotframework-browser-batteries
+    2) rfbrowser install
+
     clean-node command is used to delete node side dependencies and installed browser binaries from the library
     default installation location. When upgrading browser library, it is recommended to clean old node side
     binaries after upgrading the Python side. Example:
@@ -337,6 +140,13 @@ def cli(ctx, silent):
     1) pip install -U robotframework-browser
     2) rfbrowser clean-node
     3) rfbrowser init.
+
+    Example with BrowserBatteries library:
+
+    \b
+    1) pip install -U robotframework-browser robotframework-browser-batteries
+    2) rfbrowser clean-node
+    3) rfbrowser install
 
     Run rfbrowser clean-node command also before uninstalling the library with pip. This makes sure that playwright
     browser binaries are not left in the disk after the pip uninstall command.
@@ -419,14 +229,14 @@ def init(ctx, skip_browsers, with_deps, browser):
         )
     write_marker(silent_mode)
     try:
-        _rfbrowser_init(skip_browsers, silent_mode, with_deps, browser)
+        rfbrowser_init(skip_browsers, silent_mode, with_deps, browser)
         write_marker(silent_mode)
     except Exception as err:
         write_marker(silent_mode)
         log(traceback.format_exc())
         _python_info()
         _node_info()
-        _log_install_dir()
+        log_install_dir()
         raise err
 
 
@@ -440,7 +250,7 @@ def clean_node():
     write_marker()
     _python_info()
     _node_info()
-    _log_install_dir(False)
+    log_install_dir(False)
     write_marker()
 
     if not NODE_MODULES.is_dir():
@@ -450,33 +260,109 @@ def clean_node():
     shutil.rmtree(NODE_MODULES)
 
 
+def _is_url(value: str) -> bool:
+    p = urlparse(value)
+    return p.scheme in {"http", "https"} and bool(p.netloc)
+
+
+def _normalize_traces(item: str) -> str:
+    """Return a list of absolute file paths (for locals) and URLs (unchanged)."""
+    if _is_url(item):
+        return item
+    p = Path(item)
+    if not p.exists() or not p.is_file():
+        raise click.BadParameter(f"not a file or does not exist: {item!r}")
+    return str(p.resolve(strict=True))
+
+
 @cli.command(epilog="")
 @click.argument(
-    "file", type=click.Path(exists=True, dir_okay=False, path_type=Path), required=True
+    "file",
+    type=str,  # allow URLs and paths; we validate ourselves
+    required=False,
 )
-def show_trace(file: Path):
-    """Start the Playwright trace viewer tool.
+@click.option(
+    "--browser",
+    "-b",
+    type=click.Choice(tuple(SupportedBrowsers._member_names_), case_sensitive=False),
+    default=None,
+    help="Browser to use, one of chromium, firefox, webkit.",
+)
+@click.option(
+    "--host",
+    "-h",
+    type=str,
+    default=None,
+    help="Host to serve trace on; specifying this opens the trace in a browser tab.",
+)
+@click.option(
+    "--port",
+    "-p",
+    type=click.IntRange(0, 65535),
+    default=None,
+    help="Port to serve trace on (0 for any free port); specifying this opens a browser tab.",
+)
+@click.option(
+    "--stdin",
+    is_flag=True,
+    default=False,
+    help="Accept trace URLs over stdin to update the viewer.",
+)
+def show_trace(
+    file: str, browser: str, host: str | None, port: int | None, stdin: bool
+):
+    """Start the Playwright trace viewer.
 
-    Provide path to trace zip FILE.
+    Accepts paths to trace .zip files and/or HTTP(S) URLs. Example:
 
-    See New Context keyword documentation for more details how to create trace file:
-    https://marketsquare.github.io/robotframework-browser/Browser.html#New%20Contex
+        show-trace trace1.zip trace2.zip https://example.com/trace.zip
+
+    If using Browser Batteries, only --browser argument is supported.
+
+    To stream more traces dynamically, use --stdin and write newline-separated URLs to stdin.
+
+    See the "New Context" keyword docs for creating traces:
+    https://marketsquare.github.io/robotframework-browser/Browser.html#New%20Context
     """
-    absolute_file = file.resolve(strict=True)
-    log(f"Opening file: {absolute_file}")
-    playwright = NODE_MODULES / "playwright-core"
-    local_browsers = playwright / ".local-browsers"
-    env = os.environ.copy()
-    env["PLAYWRIGHT_BROWSERS_PATH"] = str(local_browsers)
-    trace_arguments = [
-        "npx",
-        "playwright",
-        "show-trace",
-        str(absolute_file),
-    ]
+    try:
+        normalized_trace = _normalize_traces(file) if file else ""
+    except click.BadParameter as e:
+        raise click.UsageError(str(e)) from e
+    if not _is_url(normalized_trace):
+        log(f"Opening file: {normalized_trace}")
+    ensure_playwright_browsers_path()
+    try:
+        _show_trace_via_npx(browser, host, port, stdin, normalized_trace)
+    except Exception:
+        _show_trace_via_grpc(browser, normalized_trace)
+
+
+def _show_trace_via_npx(browser, host, port, stdin, normalized_trace):
+    trace_arguments = ["npx", "playwright", "show-trace"]
+    if browser:
+        trace_arguments.extend(["--browser", browser])
+    if host is not None:
+        trace_arguments.extend(["--host", host])
+    if port is not None:
+        trace_arguments.extend(["--port", str(port)])
+    if stdin:
+        trace_arguments.append("--stdin")
+    if normalized_trace:
+        trace_arguments.append(str(normalized_trace))
     subprocess.run(  # noqa: PLW1510
-        trace_arguments, env=env, shell=SHELL, cwd=INSTALLATION_DIR
+        trace_arguments, shell=SHELL, cwd=INSTALLATION_DIR
     )
+
+
+def _show_trace_via_grpc(browser, normalized_trace):
+    args: list[str] = []
+    if browser is not None:
+        args += ["--browser", browser]
+    if normalized_trace:
+        args += [normalized_trace]
+    browser_lib = get_browser_lib()
+    browser_lib._auto_closing_level = AutoClosingLevel.KEEP
+    browser_lib.execute_npx_playwright("show-trace", *args)
 
 
 @cli.command()
@@ -535,7 +421,7 @@ def launch_browser_server(browser, options):
     \b
     Example: re.search(r"ws://.*", console_output).group()
     """
-    from ..browser import Browser, SupportedBrowsers
+    from ..browser import Browser, SupportedBrowsers  # noqa: PLC0415
 
     browser_lib = Browser()
     params = convert_options_types(options, browser_lib)
@@ -559,7 +445,7 @@ def launch_browser_server(browser, options):
 
 
 def convert_options_types(options: list[str], browser_lib: "Browser"):
-    from Browser.utils.data_types import RobotTypeConverter
+    from Browser.utils.data_types import RobotTypeConverter  # noqa: PLC0415
 
     keyword_types = browser_lib.get_keyword_types("launch_browser_server")
 
@@ -578,6 +464,71 @@ def convert_options_types(options: list[str], browser_lib: "Browser"):
             name=key, value=value
         )
     return params
+
+
+@cli.command()
+@click.argument(
+    "browser",
+    type=click.Choice([b.value for b in InstallableBrowser]),
+    required=False,
+    default=None,
+)
+def install(browser: str | None = None, **flags):
+    """Install Playwright Browsers binaries.
+
+    It installs the specified browser by executing 'npx playwright install' command.
+
+    You should only run this command if you have both Browser and BrowserBatteries
+    libraries installed. Also you do not need to run `rfbrowser init` when after or
+    before this command.
+
+    Also not run this command if you have only installed Browser library. When Browser
+    library is installed, run only the `rfbrowser init` command.
+    """
+    browser_enum = InstallableBrowser(browser) if browser else None
+    selected = []
+    for name, enabled in flags.items():
+        if enabled:
+            key = name.replace("_", "-")  # e.g. with_deps -> with-deps
+            selected.append(InstallationOptions[key])
+    ensure_playwright_browsers_path()
+    browser_lib = get_browser_lib()
+    options = [opt.value for opt in selected]
+    if browser_enum:
+        options.append(browser_enum.value)
+    with contextlib.suppress(Exception):
+        browser_lib.execute_npx_playwright("install", *options)
+
+
+for opt in InstallationOptions:
+    param_name = opt.name.replace("-", "_")
+    install = click.option(
+        opt.value, param_name, is_flag=True, help=InstallationOptionsHelp[opt.name]
+    )(install)
+
+
+@cli.command()
+@click.option(
+    "--all",
+    is_flag=True,
+    help="Removes all browsers used by Robot Framework Browser installation.",
+)
+def uninstall(all: bool):  # noqa: A002
+    """Uninstall Playwright Browsers binaries.
+
+    It uninstalls browsers by executing 'npx playwright uninstall' command.
+
+    This command removes browsers used by this installation of Robot Framework Browser from the system
+    (chromium, firefox, webkit, ffmpeg). This does not include branded channels.
+
+    If --all option is provided, it removes all browsers used by any Robot Framework Browser installation
+    from the system.
+    """
+    ensure_playwright_browsers_path()
+    browser_lib = get_browser_lib()
+    with contextlib.suppress(Exception):
+        args = ["--all"] if all else []
+        browser_lib.execute_npx_playwright("uninstall", *args)
 
 
 @cli.command()
@@ -640,8 +591,8 @@ def transform(path: Path, wait_until_network_is_idle: bool):
 )
 def translation(
     filename: Path,
-    plugings: Optional[str] = None,
-    jsextension: Optional[str] = None,
+    plugings: str | None = None,
+    jsextension: str | None = None,
     compare: bool = False,
 ):
     """Default translation file from library keywords.
@@ -711,8 +662,8 @@ def translation(
 def coverage(
     input: Path,  # noqa: A002
     output: Path,
-    config: Optional[Path] = None,
-    name: Optional[str] = None,
+    config: Path | None = None,
+    name: str | None = None,
     reports: str = "v8",
 ):
     """Combine coverage reports from the pages and create a single report.

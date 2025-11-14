@@ -17,6 +17,11 @@ syntax = "proto3";
 message Request {
   message Empty {}
 
+  message AriaSnapShot {
+    string locator = 1;
+    bool strict = 2;
+  }
+
   message ClosePage {
     bool runBeforeUnload = 1;
   }
@@ -38,6 +43,14 @@ message Request {
     string configFile = 4;
     string coverageDir = 5;
     bool raw = 6;
+  }
+
+  message CoverageMerge {
+    string input_folder = 1;
+    string output_folder = 2;
+    string config = 3;
+    string name = 4;
+    repeated string reports = 5;
   }
 
   message TraceGroup {
@@ -244,6 +257,8 @@ message Request {
     string selector = 1;
     bool strict = 2;
     repeated string key = 3;
+    int32 pressDelay = 4;
+    int32 keyDelay = 5;
   }
 
   message ElementSelector {
@@ -441,6 +456,8 @@ message Response {
 }
 
 service  Playwright {
+  /* Aria Snapshot */
+  rpc AriaSnapShot(Request.AriaSnapShot) returns (Response.String);
   /* Cookie messages */
   rpc AddCookie(Request.Json) returns (Response.Empty);
   rpc GetCookies(Request.Empty) returns (Response.Json);
@@ -590,6 +607,7 @@ service  Playwright {
   rpc SaveStorageState(Request.FilePath) returns (Response.Empty);
 
   rpc GrantPermissions(Request.Permissions) returns (Response.Empty);
+  rpc ExecutePlaywright(Request.Json) returns (Response.Empty);
   rpc ClearPermissions(Request.Empty) returns (Response.Empty);
 
   /* Extension handling */
@@ -611,4 +629,5 @@ service  Playwright {
   /* Coverage */
   rpc StartCoverage(Request.CoverageStart) returns (Response.Empty);
   rpc StopCoverage(Request.Empty) returns (Response.String);
+  rpc MergeCoverage(Request.CoverageMerge) returns (Response.Empty);
 }

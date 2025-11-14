@@ -17,6 +17,7 @@
 from .data_types import (
     AutoClosingLevel,
     BrowserInfo,
+    BoundingBox,
     ColorScheme,
     ConditionInputs,
     CookieSameSite,
@@ -36,6 +37,8 @@ from .data_types import (
     HighLightElement,
     HighlightMode,
     HttpCredentials,
+    InstallableBrowser,
+    InstallationOptions,
     LambdaFunction,
     NewPageDetails,
     Media,
@@ -50,7 +53,10 @@ from .data_types import (
     ReduceMotion,
     ReducedMotion,
     RequestMethod,
+    Scale,
     Scope,
+    ScreenshotFileTypes,
+    ScreenshotReturnType,
     ScrollPosition,
     SelectAttribute,
     SelectOptions,
@@ -69,6 +75,8 @@ from .misc import (
     is_same_keyword,
     keyword,
     spawn_node_process,
+    suppress_logging,
+    close_process_tree,
 )
 from .robot_booleans import is_falsy, is_truthy
 from .settings_stack import ScopedSetting, SettingsStack

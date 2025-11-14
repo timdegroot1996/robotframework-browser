@@ -18,12 +18,21 @@ import os
 import socket
 import string
 import subprocess
+from io import TextIOWrapper
 from pathlib import Path
-from typing import Any, Union
+from typing import Any
 
+import psutil  # type: ignore[import-untyped]
+from robot.api import logger
 from robot.libraries.BuiltIn import BuiltIn
 
+from Browser.entry.constant import PLAYWRIGHT_BROWSERS_PATH
 from Browser.utils.data_types import DownloadInfo
+
+try:
+    from BrowserBatteries import start_grpc_server
+except ImportError:
+    start_grpc_server = None  # type: ignore[assignment]
 
 get_variable_value = BuiltIn().get_variable_value
 
@@ -53,9 +62,17 @@ def spawn_node_process(output_dir: Path) -> tuple[subprocess.Popen, str]:
     """
     logfile = output_dir.open("w", encoding="utf-8")
     os.environ["DEBUG"] = "pw:api"
-    os.environ["PLAYWRIGHT_BROWSERS_PATH"] = "0"
+    if start_grpc_server is None:
+        os.environ[PLAYWRIGHT_BROWSERS_PATH] = "0"
     host = "127.0.0.1"
     port = str(find_free_port())
+    if start_grpc_server is None:
+        return _spawn_node_process(logfile, host, port)
+    process = start_grpc_server(logfile, host, port, True)
+    return process, port
+
+
+def _spawn_node_process(logfile: TextIOWrapper, host: str, port: str):
     process = subprocess.Popen(
         [
             "node",
@@ -106,7 +123,7 @@ def type_converter(argument: Any) -> str:
     return type(argument).__name__.lower()
 
 
-def get_download_id(download: Union[DownloadInfo, str]) -> str:
+def get_download_id(download: DownloadInfo | str) -> str:
     if isinstance(download, str):
         return download
     if isinstance(download, dict):
@@ -119,3 +136,45 @@ def get_download_id(download: Union[DownloadInfo, str]) -> str:
     raise ValueError(
         "Argument must be either a dictionary with a key 'downloadID' or a string with a valid download id."
     )
+
+
+@contextlib.contextmanager
+def suppress_logging():
+    """Context manager to temporarily set the log level."""
+    log_level = BuiltIn()._context.output.set_log_level("NONE")
+    try:
+        yield
+    finally:
+        BuiltIn()._context.output.set_log_level(log_level)
+
+
+def close_process_tree(proc: psutil.Popen, timeout=3):
+    """Close a process and all it's child-processes.
+
+    Does nothing if the process is already closed.
+    Warns if at least 1 process remains alive after timeout (seconds) has passed.
+    """
+    try:
+        parent = psutil.Process(proc.pid)
+    except psutil.NoSuchProcess:
+        logger.trace("Process already closed")
+        return
+
+    to_close = parent.children(recursive=True)
+    to_close.append(parent)
+    for p in to_close:
+        logger.trace(f"Closing process <name={p.name()} pid={p.pid}>")
+        with contextlib.suppress(psutil.NoSuchProcess):
+            p.kill()
+    _gone, alive = psutil.wait_procs(
+        to_close,
+        timeout=timeout,
+        callback=lambda p: logger.trace(f"Process {p.pid} closed"),
+    )
+
+    if not alive:
+        logger.trace("Process tree closed")
+        return
+
+    for p in alive:
+        logger.warn(f"Failed to close process. pid={p.pid}")

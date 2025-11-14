@@ -8,8 +8,8 @@ from pathlib import Path
 from typing import Optional
 
 from robot.api import logger  # type: ignore
-from robot.libraries.OperatingSystem import OperatingSystem  # type: ignore
 from robot.libraries.BuiltIn import BuiltIn  # type: ignore
+from robot.libraries.OperatingSystem import OperatingSystem  # type: ignore
 from robot.utils import timestr_to_secs  # type: ignore
 
 
@@ -50,7 +50,7 @@ def glob_files(path: str) -> list:
     """Returns files path.glob(**/*)."""
     files = Path(path).glob("**/*")
     find_files = [str(file.absolute()) for file in files if file.is_file()]
-    logger.info(f"Files: \"{', '.join(find_files)}\"")
+    logger.info(f'Files: "{", ".join(find_files)}"')
     return find_files
 
 
@@ -135,6 +135,10 @@ def get_python_binary_path() -> str:
     return sys.executable
 
 
+def is_python_314() -> bool:
+    return sys.version_info >= (3, 14) and sys.version_info < (3, 15)
+
+
 def _parse_fi_date(date: str) -> datetime:
     if not date:
         # 2000-01-01 because of Windos raising OsError
@@ -211,6 +215,11 @@ def get_parent(path: str) -> Path:
     return Path(path).parent
 
 
-def relative_to(path1: Path, path2: Path) -> str:
+def relative_to(path1: Path, path2: Path) -> Path:
     """Return relative path."""
     return path1.relative_to(path2)
+
+
+def get_file_name(path: str) -> str:
+    """Return file name from path."""
+    return Path(path).name

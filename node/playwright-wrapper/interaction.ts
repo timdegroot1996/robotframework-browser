@@ -20,9 +20,7 @@ import { Request, Response } from './generated/playwright_pb';
 import { emptyWithLog } from './response-util';
 import { findLocator, invokeOnKeyboard, invokeOnMouse } from './playwright-invoke';
 import { getSelections } from './getters';
-
-import pino from 'pino';
-const logger = pino({ timestamp: pino.stdTimeFunctions.isoTime });
+import { logger } from './browser_logger';
 
 export async function selectOption(
     request: Request.SelectElementSelector,
@@ -87,9 +85,14 @@ export async function press(request: Request.PressKeys, state: PlaywrightState):
     const selector = request.getSelector();
     const keyList = request.getKeyList();
     const strictMode = request.getStrict();
+    const pressDelay = request.getPressdelay();
+    const keyDelay = request.getKeydelay();
     const locator = await findLocator(state, selector, strictMode, undefined, true);
     for (const i of keyList) {
-        await locator.press(i);
+        await locator.press(i, { delay: pressDelay });
+        if (keyDelay > 0) {
+            await new Promise((r) => setTimeout(r, keyDelay));
+        }
     }
     return emptyWithLog(`Pressed keys: "${keyList}" on ${selector} `);
 }

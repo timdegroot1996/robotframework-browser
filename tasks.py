@@ -5,15 +5,16 @@ import re
 import shutil
 import subprocess
 import sys
+import sysconfig
 import time
 import traceback
 import zipfile
-from datetime import datetime
+from collections.abc import Iterable
 from pathlib import Path, PurePath
-from typing import Iterable
-from xml.etree import ElementTree as ET
 
 from invoke import Exit, task
+from invoke.context import Context
+import uv
 
 try:
     import bs4
@@ -23,8 +24,6 @@ try:
     from robot import __version__ as rf_version
     from robot import rebot_cli
     from robot.libdoc import libdoc
-
-    from Browser.utils import spawn_node_process
 except ModuleNotFoundError:
     traceback.print_exc()
     print('Assuming that this is for "inv deps" command and ignoring error.')
@@ -32,16 +31,19 @@ except ModuleNotFoundError:
 ROOT_DIR = Path(os.path.dirname(__file__))
 ATEST_OUTPUT = ROOT_DIR / "atest" / "output"
 UTEST_OUTPUT = ROOT_DIR / "utest" / "output"
-FLIP_RATE = ROOT_DIR / "flip_rate"
-dist_dir = ROOT_DIR / "dist"
-build_dir = ROOT_DIR / "build"
+DIST_DIR = ROOT_DIR / "dist"
+BUILD_DIR = ROOT_DIR / "build"
+BROWSER_BATTERIES_DIR = ROOT_DIR / "browser_batteries"
+BROWSER_BATTERIES_BIN_DIR = BROWSER_BATTERIES_DIR / "BrowserBatteries" / "bin"
 proto_sources = (ROOT_DIR / "protobuf").glob("*.proto")
 PYTHON_SRC_DIR = ROOT_DIR / "Browser"
 python_protobuf_dir = PYTHON_SRC_DIR / "generated"
-wrapper_dir = PYTHON_SRC_DIR / "wrapper"
+WRAPPER_DIR = PYTHON_SRC_DIR / "wrapper"
 node_protobuf_dir = ROOT_DIR / "node" / "playwright-wrapper" / "generated"
 node_dir = ROOT_DIR / "node"
-npm_deps_timestamp_file = ROOT_DIR / "node_modules" / ".installed"
+NODE_MODULES = ROOT_DIR / "node_modules"
+npm_deps_timestamp_file = NODE_MODULES / ".installed"
+
 node_lint_timestamp_file = node_dir / ".linted"
 ATEST_TIMEOUT = 900
 cpu_count = os.cpu_count() or 1
@@ -60,69 +62,119 @@ the Playwright_ tool internally. Browser library {version} is a new release with
 **UPDATE** enhancements and bug fixes.
 All issues targeted for Browser library {version.milestone} can be found
 from the `issue tracker`_.
-For first time installation with pip_, just run
+For first time installation with pip_ and BrowserBatteries_ just run
+::
+   pip install robotframework-browser robotframework-browser-batteries
+   rfbrowser install
+to install the latest available release. If you upgrading
+from previous release with pip_, run
+::
+   pip install --upgrade robotframework-browser robotframework-browser-batteries
+   rfbrowser clean-node
+   rfbrowser install
+For first time installation with pip_ with Browser library only, just run
 ::
    pip install robotframework-browser
    rfbrowser init
-to install the latest available release. If you upgrading
-from previous release with pip_, run
+If you upgrading from previous release with pip_, run
 ::
    pip install --upgrade robotframework-browser
    rfbrowser clean-node
    rfbrowser init
 Alternatively you can download the source distribution from PyPI_ and
 install it manually. Browser library {version} was released on {date}.
-Browser supports Python 3.9+, Node 18/20/22 LTS and Robot Framework 5.0+.
+Browser supports Python 3.10+, Node 20/22/24 LTS and Robot Framework 6.1+.
 Library was tested with Playwright REPLACE_PW_VERSION
 
 .. _Robot Framework: http://robotframework.org
 .. _Browser: https://github.com/MarketSquare/robotframework-browser
 .. _Playwright: https://github.com/microsoft/playwright
 .. _pip: http://pip-installer.org
+.. _BrowserBatteries: https://pypi.org/project/robotframework-browser-batteries/
 .. _PyPI: https://pypi.python.org/pypi/robotframework-browser
-.. _issue tracker: https://github.com/MarketSquare/robotframework-browser/milestones/{version.milestone}
+.. _issue tracker: https://github.com/MarketSquare/robotframework-browser/issues?q=state%3Aclosed%20milestone%3A{version.milestone}
 """
 
 
+def _node_deps(context: Context):
+    arch = " --target_arch=x64" if platform.processor() == "arm" else ""
+    context.run(
+        f"npm install{arch} --parseable true --progress false",
+        env={"PLAYWRIGHT_BROWSERS_PATH": "0"},
+    )
+    context.run(
+        "npx --quiet playwright install  --with-deps",
+        env={"PLAYWRIGHT_BROWSERS_PATH": "0"},
+    )
+    npm_deps_timestamp_file.touch()
+
+
 @task
-def deps(c, system=False):
-    c.run("pip install -U pip")
-    c.run("pip install -U uv")
-    uv_cmd = f"uv pip install -r Browser/dev-requirements.txt{' --system' * (system or IS_GITPOD)}"
+def deps(c, system=False, force=False, uv=False):
+    """Install dependencies for development.
+
+    Args:
+        system: When set, installs packages to system Python instead of user.
+        force: When set, installs dependencies even there is no changes.
+    """
+    if uv:
+        print("No pip install.")
+    else:
+        c.run("pip install -U pip")
+        c.run("pip install -U uv")
+    print("Installing dev dependencies.")
+
+    package_manager_dev_cmd = f"uv pip install -r Browser/dev-requirements.txt{' --system' * (system or IS_GITPOD)}"
+    package_manager_deps_cmd = (
+        f"uv pip install -r pyproject.toml{' --system' * (system or IS_GITPOD)}"
+    )
     if IN_CI:
         print(f"Install packages to Python found from {sys.executable}.")
-        uv_cmd = f"{uv_cmd} --python {sys.executable}"
-    c.run(uv_cmd)
-    if os.environ.get("CI"):
-        shutil.rmtree("node_modules", ignore_errors=True)
+        package_manager_dev_cmd = f"{package_manager_dev_cmd} --python {sys.executable}"
+        package_manager_deps_cmd = (
+            f"{package_manager_deps_cmd} --python {sys.executable}"
+        )
+    c.run(package_manager_dev_cmd)
+    print("Install package dependencies.")
+    c.run(package_manager_deps_cmd)
+    if IN_CI:
+        shutil.rmtree(str(NODE_MODULES), ignore_errors=True)
 
     if _sources_changed([ROOT_DIR / "./package-lock.json"], npm_deps_timestamp_file):
-        arch = " --target_arch=x64" if platform.processor() == "arm" else ""
-        c.run(
-            f"npm install{arch} --parseable true --progress false",
-            env={"PLAYWRIGHT_BROWSERS_PATH": "0"},
-        )
-        c.run(
-            "npx --quiet playwright install  --with-deps",
-            env={"PLAYWRIGHT_BROWSERS_PATH": "0"},
-        )
-        npm_deps_timestamp_file.touch()
+        print("Installing node dependencies.")
+        _node_deps(c)
+    elif force:
+        print("Forcing to install node dependencies.")
+        _node_deps(c)
     else:
         print("no changes in package-lock.json, skipping npm install")
 
 
 @task
-def clean(c):
+def clean_mini(c):
+    """Cleans only build and test artifacts."""
     for target in [
-        dist_dir,
-        build_dir,
-        python_protobuf_dir,
-        node_protobuf_dir,
+        DIST_DIR,
+        BUILD_DIR,
         UTEST_OUTPUT,
-        FLIP_RATE,
-        Path("./htmlcov"),
         ATEST_OUTPUT,
         ZIP_DIR,
+        BROWSER_BATTERIES_BIN_DIR,
+        BROWSER_BATTERIES_DIR / "dist",
+        Path("./playwright-log.txt"),
+        PYTHON_SRC_DIR / "rfbrowser.log",
+    ]:
+        if target.exists():
+            shutil.rmtree(target, ignore_errors=True)
+
+
+@task(clean_mini)
+def clean(c):
+    """Cleans build artifacts and temporary files."""
+    for target in [
+        python_protobuf_dir,
+        node_protobuf_dir,
+        Path("./htmlcov"),
         Path("./.mypy_cache"),
         PYTHON_SRC_DIR / "wrapper",
     ]:
@@ -132,12 +184,10 @@ def clean(c):
     for file in [
         npm_deps_timestamp_file,
         node_lint_timestamp_file,
-        Path("./playwright-log.txt"),
         Path("./.coverage"),
         pyi_file,
         Path("./.ruff_cache"),
         Path("./.pytest_cache"),
-        PYTHON_SRC_DIR / "rfbrowser.log",
     ]:
         try:
             file.unlink()
@@ -186,14 +236,9 @@ def _python_protobuf_gen(c):
 def _node_protobuf_gen(c):
     plugin_suffix = ".cmd" if platform.platform().startswith("Windows") else ""
     protoc_plugin = (
-        ROOT_DIR
-        / "node_modules"
-        / ".bin"
-        / f"grpc_tools_node_protoc_plugin{plugin_suffix}"
+        NODE_MODULES / ".bin" / f"grpc_tools_node_protoc_plugin{plugin_suffix}"
     )
-    protoc_ts_plugin = (
-        ROOT_DIR / "node_modules" / ".bin" / f"protoc-gen-ts{plugin_suffix}"
-    )
+    protoc_ts_plugin = NODE_MODULES / ".bin" / f"protoc-gen-ts{plugin_suffix}"
     cmd = (
         "npm run grpc_tools_node_protoc -- "
         f"--js_out=import_style=commonjs,binary:{node_protobuf_dir} "
@@ -211,11 +256,19 @@ def _node_protobuf_gen(c):
     c.run(cmd)
 
 
+def _gen_stub(c: Context):
+    shutil.rmtree("mypy_stub/", ignore_errors=True)
+    Path("Browser/browser.pyi").unlink(missing_ok=True)
+    c.run("stubgen --output mypy_stub Browser")
+    c.run("python -m Browser.gen_stub")
+
+
 @task(protobuf)
-def node_build(c):
+def node_build(c: Context):
     c.run("npm run build")
-    shutil.rmtree(wrapper_dir / "static", ignore_errors=True)
-    shutil.copytree(node_dir / "playwright-wrapper" / "static", wrapper_dir / "static")
+    shutil.rmtree(WRAPPER_DIR / "static", ignore_errors=True)
+    shutil.copytree(node_dir / "playwright-wrapper" / "static", WRAPPER_DIR / "static")
+    _gen_stub(c)
 
 
 @task
@@ -224,8 +277,51 @@ def create_test_app(c):
 
 
 @task(deps, protobuf, node_build, create_test_app)
-def build(c):
-    c.run("python -m Browser.gen_stub")
+def build(c: Context):
+    _gen_stub(c)
+
+
+def _os_platform() -> str:
+    pl = platform.system().lower()
+    if pl == "darwin":
+        return "macos"
+    if pl == "windows":
+        return "win"
+    return "linux"
+
+
+def _build_nodejs(c: Context, architecture: str):
+    """Build NodeJS binary for GRPC server."""
+    print(
+        f"Build NodeJS binary to '{BROWSER_BATTERIES_BIN_DIR}' with architecture '{architecture}'."
+    )
+    _copy_package_files()
+    target = f"node22-{_os_platform()}-{architecture}"
+    print(f"Target: {target}")
+    grpc_server_bin = "grpc_server.exe" if os.name == "nt" else "grpc_server"
+    grpc_server = BROWSER_BATTERIES_BIN_DIR.joinpath(grpc_server_bin)
+    cmd = [
+        "node",
+        "node_modules/@yao-pkg/pkg/lib-es5/bin.js",
+        "--public",
+        "--targets",
+        target,
+        "--output",
+        str(grpc_server),
+        ".",
+    ]
+    c.run(" ".join(cmd))
+    if grpc_server.exists():
+        print(f"GRPC server binary created at '{grpc_server}'.")
+    else:
+        print(f"Failed to create GRPC server binary at '{grpc_server}'.")
+        sys.exit(1)
+
+
+@task(clean, build)
+def build_nodejs(c: Context, architecture: str):
+    """Build GRPC server binary from NodeJS side."""
+    _build_nodejs(c, architecture)
 
 
 def _sources_changed(source_files: Iterable[Path], timestamp_file: Path):
@@ -280,6 +376,16 @@ def clean_atest(c):
     _clean_zip_dir()
 
 
+def _batteries(batteries: bool):
+    batteries_dir = str(BROWSER_BATTERIES_DIR)
+    if batteries:
+        print("Running with BrowserBatteries")
+        sys.path.append(batteries_dir)
+        browser_path = NODE_MODULES / "playwright-core" / ".local-browsers"
+        os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(browser_path)
+    return batteries_dir
+
+
 @task(clean_atest, create_test_app)
 def atest(
     c,
@@ -287,14 +393,14 @@ def atest(
     test=None,
     include=None,
     shard=None,
-    zip=None,
     debug=False,
-    include_mac=None,
+    include_mac=False,
     smoke=False,
     processes=None,
     framed=False,
     exclude=None,
     loglevel=None,
+    batteries=False,
 ):
     """Runs Robot Framework acceptance tests with pabot.
 
@@ -303,11 +409,11 @@ def atest(
         test: Select which test to run.
         include: Select test by tag
         shard: Shard tests
-        zip: Create zip file from output files.
         debug: Use robotframework-debugger as test listener
         smoke: If true, runs only tests that take less than 500ms.
         include_mac: Does not exclude no-mac-support tags. Should be only used in local testing
         loglevel: Set log level for robot framework
+        batteries: Run test with BrowserBatteries. Assumes that GRPC server is build.
     """
     if IS_GITPOD and (not processes or int(processes) > 6):
         processes = "6"
@@ -317,7 +423,7 @@ def atest(
     args.extend(
         [
             "--ordering",
-            "atest/atest_order.txt",
+            "atest/atest_order.data",
             "--pythonpath",
             ".",
         ]
@@ -341,6 +447,8 @@ def atest(
     loglevel = loglevel or "DEBUG"
     args.extend(["--exclude", "tidy-transformer"])
     ATEST_OUTPUT.mkdir(parents=True, exist_ok=True)
+    _batteries(batteries)
+    from Browser.utils import spawn_node_process
 
     background_process, port = spawn_node_process(ATEST_OUTPUT / "playwright-log.txt")
     try:
@@ -348,10 +456,6 @@ def atest(
         rc = _run_pabot(args, shard, include_mac, loglevel=loglevel)
     finally:
         background_process.kill()
-
-    if zip:
-        _clean_zip_dir()
-        print(f"Zip file created to: {_create_zip(rc, shard)}")
     sys.exit(rc)
 
 
@@ -372,75 +476,14 @@ def _clean_pabot_results(rc: int):
         print("Not deleting pabot_results on error")
 
 
-def _create_zip(rc: int, shard: str):
-    shard = shard.replace("/", "of")
-    zip_dir = ZIP_DIR / "output"
-    zip_dir.mkdir(parents=True)
-    _clean_pabot_results(rc)
-    py_version = platform.python_version()
-    node_process = subprocess.run(
-        ["node", "--version"], capture_output=True, check=False
-    )
-    node_version = node_process.stdout.strip().decode("utf-8")
-    zip_name = f"{sys.platform}-rf-{rf_version}-py-{py_version}-node-{node_version}-shard-{shard}.zip"
-    zip_path = zip_dir / zip_name
-    print(f"Creating zip  in: {zip_path}")
-    zip_file = zipfile.ZipFile(zip_path, "w")
-    for file in ATEST_OUTPUT.glob("**/*.*"):
-        zip_file = _files_to_zip(zip_file, file, ATEST_OUTPUT)
-    for file in UTEST_OUTPUT.glob("*.*"):
-        zip_file = _files_to_zip(zip_file, file, UTEST_OUTPUT)
-    zip_file.close()
-    return zip_path
-
-
-def _files_to_zip(zip_file, file, relative_to):
-    file = PurePath(file)
-    arc_name = file.relative_to(str(relative_to))
-    zip_file.write(file, arc_name)
-    return zip_file
-
-
-@task()
-def copy_xunit(c):
-    """Copies local xunit files for flaky test analysis"""
-    xunit_dest_dir = FLIP_RATE / "xunit"
-    xunit_dest_dir.mkdir(parents=True, exist_ok=True)
-    robot_xunit = xunit_dest_dir / f"robot_xunit-{time.monotonic()}.xml"
-    try:
-        shutil.copy(ATEST_OUTPUT / "robot_xunit.xml", robot_xunit)
-    except Exception as error:
-        print(f"\nWhen copying robot xunit got error: {error}")
-        robot_copy = False
-    else:
-        robot_copy = True
-    pytest_xunit = xunit_dest_dir / f"pytest_xunit-{time.monotonic()}.xml"
-    try:
-        shutil.copy(UTEST_OUTPUT / "pytest_xunit.xml", pytest_xunit)
-    except Exception as error:
-        print(f"\nWhen copying pytest xunit got error: {error}")
-    else:
-        print(f"Copied {pytest_xunit}")
-    if robot_copy:
-        tree = ET.parse(robot_xunit)
-        root = tree.getroot()
-        now = datetime.now()
-        root.attrib["timestamp"] = now.strftime("%Y-%m-%dT%H:%M:%S.000000")
-        new_root = ET.Element("testsuites")
-        new_root.insert(0, root)
-        ET.ElementTree(new_root).write(robot_xunit)
-        print(f"Copied {robot_xunit}")
-    else:
-        print("Not modifying RF xunit output.")
-
-
 @task(clean_atest)
-def atest_robot(c, zip=None, smoke=False):
+def atest_robot(c, smoke=False, suite=None, batteries=False):
     """Run atest with Robot Framework
 
     Arguments:
-        zip: Create zip file from output files.
         smoke: If true, runs only tests that take less than 500ms.
+        suite: Select which suite to run.
+        batteries: If true, includes BrowserBatteries in the test run.
     """
     os.environ["ROBOT_SYSLOG_FILE"] = str(ATEST_OUTPUT / "syslog.txt")
     sys_var_ci = int(os.environ.get("SYS_VAR_CI_INSTALL_TEST", 0))
@@ -467,6 +510,11 @@ def atest_robot(c, zip=None, smoke=False):
             str(ATEST_OUTPUT),
         ]
     )
+    if suite:
+        command_args.extend(["--suite", suite])
+    if batteries:
+        batteries_dir = _batteries(batteries)
+        command_args.extend(["--pythonpath", batteries_dir])
     command_args = _add_skips(command_args)
     command_args.append("atest/test")
     env = os.environ.copy()
@@ -476,9 +524,6 @@ def atest_robot(c, zip=None, smoke=False):
     print(f"Process {output_xml}")
     robotstatuschecker.process_output(output_xml)
     rc = rebot_cli(["--outputdir", str(ATEST_OUTPUT), output_xml], exit=False)
-    if zip:
-        _clean_zip_dir()
-        print(f"Zip file created to: {_create_zip(rc)}")
     _clean_pabot_results(rc)
     print(f"DONE rc=({rc})")
     sys.exit(rc)
@@ -498,11 +543,14 @@ def atest_failed(c):
 
 
 @task()
-def run_tests(c, tests):
+def run_tests(c, tests, batteries=False):
     """Run robot with dev Browser.
 
-    Parameter [tests] is the path to tests to run.
+    Arguments:
+        tests: is the path to tests to run.
+        batteries: If true, includes BrowserBatteries in the test run.
     """
+    _batteries(batteries)
     env = os.environ.copy()
     process = subprocess.Popen(
         [
@@ -609,18 +657,20 @@ def lint_python(c, fix=False):
         "ruff",
         "format",
         "--config",
-        "Browser/pyproject.toml",
+        "pyproject.toml",
         "Browser/",
         "bootstrap.py",
         "tasks.py",
         "utest",
+        "browser_batteries",
     ]
     ruff_cmd_check = [
         "ruff",
         "check",
         "--config",
-        "Browser/pyproject.toml",
+        "pyproject.toml",
         "Browser/",
+        "browser_batteries/",
         "bootstrap.py",
     ]
     if fix:
@@ -632,7 +682,17 @@ def lint_python(c, fix=False):
     print(f"Run ruff check: {ruff_cmd_check}")
     c.run(" ".join(ruff_cmd_check))
     print("Run mypy:")
-    c.run("mypy --exclude .venv --config-file Browser/mypy.ini Browser/ bootstrap.py")
+    mypy_cmd = [
+        "mypy",
+        "--exclude",
+        ".venv",
+        "--config-file",
+        "Browser/mypy.ini",
+        "Browser/",
+        "bootstrap.py",
+        "browser_batteries/",
+    ]
+    c.run(" ".join(mypy_cmd))
 
 
 @task
@@ -654,7 +714,7 @@ def lint_robot(c):
     in_ci = os.getenv("GITHUB_WORKFLOW")
     print(f"Lint Robot files {'in ci' if in_ci else ''}")
     atest_folder = Path("atest/").resolve()
-    config_file = Path("Browser/pyproject.toml").resolve()
+    config_file = Path("pyproject.toml").resolve()
     base_commnd = ["robotidy", "--config", str(config_file)]
     if IN_CI:
         base_commnd.insert(1, "--check")
@@ -739,8 +799,33 @@ def docker_run_tmp_tests(c):
 
 
 @task(build)
-def run_test_app(c):
+def run_test_app(c: Context):
+    """Run dynamic test app."""
     c.run("node node/dynamic-test-app/dist/server.js")
+
+
+@task
+def run_test_app_no_build(c: Context, asynchronous=False):
+    """Run dynamic test app without building.
+
+    Args:
+        asynchronous: When true, returns immediately after starting the subprocess.
+    """
+    print("Running test app without building.")
+    c.run("node node/dynamic-test-app/dist/server.js", asynchronous=asynchronous)
+    time.sleep(4)
+    print(f"Test app started with asynchronous mode {asynchronous}.")
+
+
+@task
+def docker_copy_output(c: Context):
+    """Copy atest output from docker container to host."""
+    output = ROOT_DIR / "docker_last_container.txt"
+    output.unlink(missing_ok=True)
+    c.run(f"docker ps --all --last 1 --format '{{{{.ID}}}}' > {output}")
+    with output.open("r") as file:
+        container_id = file.read().strip()
+    c.run(f"docker cp {container_id}:/home/pwuser/output ./output_docker")
 
 
 @task
@@ -787,16 +872,63 @@ def docs(c, version=None):
         output.rename(target)
 
 
+def _copy_package_files():
+    WRAPPER_DIR.mkdir(parents=True, exist_ok=True)
+    shutil.copy(ROOT_DIR / "package.json", WRAPPER_DIR)
+    shutil.copy(ROOT_DIR / "package-lock.json", WRAPPER_DIR)
+
+
 @task
 def create_package(c):
-    shutil.copy(ROOT_DIR / "package.json", ROOT_DIR / "Browser" / "wrapper")
-    shutil.copy(ROOT_DIR / "package-lock.json", ROOT_DIR / "Browser" / "wrapper")
+    _copy_package_files()
     c.run("python -m build")
 
 
-@task(clean, build, docs, create_package)
-def package(c):
-    """Build python wheel for release."""
+@task(clean_mini, build, docs, create_package)
+def package(c: Context):
+    """Build python wheel for Browser release."""
+
+
+def _get_architectures() -> str:
+    if sysconfig.get_platform() == "win-amd64":
+        return "x64"
+    machine = platform.machine().lower()
+    if machine == "aarch64":
+        return "arm64"
+    return machine
+
+
+@task(clean_mini, build)
+def package_nodejs(c: Context, architecture=None):
+    """Build Python wheel from BrowserBattiers release."""
+    pw_browser_bin = NODE_MODULES / "playwright-core" / ".local-browsers"
+    print(f"Removing existing Playwright browsers in {pw_browser_bin}")
+    shutil.rmtree(pw_browser_bin, ignore_errors=True)
+    architecture = architecture or _get_architectures()
+    _build_nodejs(c, architecture)
+    with c.cd(BROWSER_BATTERIES_DIR):
+        print(f"Building Browser Batteries package in {BROWSER_BATTERIES_DIR}")
+        c.run("python -m build")
+    _os_platform = sysconfig.get_platform()
+    print(f"Current os platform: {_os_platform}")
+    _os_platform = _os_platform.replace("-", "_").replace(".", "_").replace(" ", "_")
+    if _os_platform.startswith("macosx") and platform.machine().lower() == "x86_64":
+        _os_platform = _os_platform.replace("universal2", platform.machine().lower())
+    elif sysconfig.get_platform().lower() == "linux-x86_64":
+        _os_platform = f"manylinux_2_17_{architecture}"
+    elif sysconfig.get_platform().lower() == "linux-aarch64":
+        _os_platform = "manylinux_2_17_aarch64.manylinux2014_aarch64"
+    dist_dir = BROWSER_BATTERIES_DIR.joinpath("dist")
+    wheel_pkg = dist_dir.glob("*.whl")
+    wheel_pkg = list(wheel_pkg)[0]
+    wheel_pkg_os_platform = wheel_pkg.name.replace("any", _os_platform)
+    wheel_pkg_os_platform = dist_dir / wheel_pkg_os_platform
+    print(f"Renaming {wheel_pkg} to have platform tag {wheel_pkg_os_platform}")
+    wheel_pkg.rename(wheel_pkg_os_platform)
+    tar_gz_pkg = dist_dir.glob("*.tar.gz")
+    tar_gz_pkg = list(tar_gz_pkg)[0]
+    print(f"Deleting tar.gz package {tar_gz_pkg}")
+    tar_gz_pkg.unlink()
 
 
 @task
@@ -852,23 +984,40 @@ def version(c, version):
     node_version_file = ROOT_DIR / "package.json"
     node_version_matcher = re.compile('"version": ".*"')
     _replace_version(node_version_file, node_version_matcher, f'"version": "{version}"')
-    setup_py_file = ROOT_DIR / "setup.py"
-    _replace_version(setup_py_file, node_version_matcher, f'"version": "{version}"')
-
+    package_lock = ROOT_DIR / "package-lock.json"
+    data = json.loads(package_lock.read_text())
+    data["version"] = version
+    data["packages"][""]["version"] = version
+    package_lock.write_text(json.dumps(data, indent=2))
+    py_project_toml = ROOT_DIR / "pyproject.toml"
+    py_project_toml_matcher = re.compile('version = ".*"')
+    _replace_version(
+        py_project_toml, py_project_toml_matcher, f'version = "{version}"', 1
+    )
+    py_project_toml = BROWSER_BATTERIES_DIR / "pyproject.toml"
+    _replace_version(
+        py_project_toml, py_project_toml_matcher, f'version = "{version}"', 1
+    )
+    py_project_toml_matcher = re.compile(
+        r'dependencies = \["robotframework-browser==.*"\]'
+    )
+    _replace_version(
+        py_project_toml,
+        py_project_toml_matcher,
+        f'dependencies = ["robotframework-browser=={version}"]',
+        1,
+    )
     dockerfile = ROOT_DIR / "docker" / "Dockerfile.latest_release"
     docker_version_matcher = re.compile("robotframework-browser==.*")
     _replace_version(
         dockerfile, docker_version_matcher, f"robotframework-browser=={version}"
     )
-    # workflow_file = root_dir / ".github" / "workflows" / "python-package.yml"
-    # workflow_version_matcher = re.compile("VERSION: .*")
-    # _replace_version(workflow_file, workflow_version_matcher, f"VERSION: {version}")
 
 
-def _replace_version(filepath, matcher, version):
+def _replace_version(filepath, matcher, version, count=0):
     content = filepath.open().read()
     with open(filepath, "w") as out:
-        out.write(matcher.sub(version, content))
+        out.write(matcher.sub(version, content, count))
 
 
 @task

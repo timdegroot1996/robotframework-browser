@@ -31,8 +31,7 @@ import { ServerReadableStream, ServerUnaryCall, ServerWritableStream, sendUnaryD
 import { ServerSurfaceCall } from '@grpc/grpc-js/build/src/server-call';
 import { class_async_logger } from './keyword-decorators';
 import { emptyWithLog, errorResponse, stringResponse } from './response-util';
-import { pino } from 'pino';
-const logger = pino({ timestamp: pino.stdTimeFunctions.isoTime });
+import { logger } from './browser_logger';
 
 @class_async_logger
 export class PlaywrightServer implements IPlaywrightServer {
@@ -251,6 +250,7 @@ export class PlaywrightServer implements IPlaywrightServer {
     newBrowser = this.wrapping(playwrightState.newBrowser);
     startCoverage = this.wrapping(playwrightState.startCoverage);
     stopCoverage = this.wrapping(playwrightState.stopCoverage);
+    mergeCoverage = this.wrapping(playwrightState.mergeCoverage);
     launchBrowserServer = this.wrapping(playwrightState.launchBrowserServer);
     newPersistentContext = this.wrapping(playwrightState.newPersistentContext);
     connectToBrowser = this.wrapping(playwrightState.connectToBrowser);
@@ -284,6 +284,7 @@ export class PlaywrightServer implements IPlaywrightServer {
 
     takeScreenshot = this.wrapping(browserControl.takeScreenshot);
     getBoundingBox = this.wrapping(getters.getBoundingBox);
+    ariaSnapShot = this.wrappingStatePage(getters.getAriaSnapshot);
 
     async getPageSource(
         call: ServerUnaryCall<Request.Empty, Response.String>,
@@ -360,6 +361,7 @@ export class PlaywrightServer implements IPlaywrightServer {
     }
 
     selectOption = this.wrapping(interaction.selectOption);
+    executePlaywright = this.wrapping(browserControl.executePlaywright);
     grantPermissions = this.wrapping(browserControl.grantPermissions);
     clearPermissions = this.wrapping(browserControl.clearPermissions);
     deselectOption = this.wrapping(interaction.deSelectOption);

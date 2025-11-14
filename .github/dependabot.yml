@@ -10,13 +10,14 @@ updates:
         - "@typescript-eslint*"
 
   - package-ecosystem: "pip"
-    directory: "/Browser"
+    directory: "/"
     schedule:
       interval: "daily"
     groups:
       grpc:
         patterns:
         - "grpcio*"
+        - "protobu*"
 
   - package-ecosystem: "github-actions"
     directory: "/"

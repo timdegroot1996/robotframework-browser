@@ -18,9 +18,16 @@ import { PlaywrightState } from './playwright-state';
 import { Request, Response } from './generated/playwright_pb';
 import { emptyWithLog, stringResponse } from './response-util';
 import { exists, findLocator } from './playwright-invoke';
-import { pino } from 'pino';
+import { logger } from './browser_logger';
 
-const logger = pino({ timestamp: pino.stdTimeFunctions.isoTime });
+const { program: pwProgram } = require('playwright-core/lib/cli/program') as { program: import('commander').Command }; // eslint-disable-line
+
+export async function executePlaywright(request: Request.Json): Promise<Response.Empty> {
+    const args = JSON.parse(request.getBody());
+    pwProgram.exitOverride();
+    await pwProgram.parseAsync(args, { from: 'user' });
+    return emptyWithLog('Executed Playwright command: ' + args.join(' '));
+}
 
 export async function grantPermissions(request: Request.Permissions, state: PlaywrightState): Promise<Response.Empty> {
     const browserContext = state.getActiveContext();

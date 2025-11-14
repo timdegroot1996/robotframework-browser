@@ -7,7 +7,7 @@ from urllib.parse import urlparse
 from robot.api import logger
 from robot.libraries.BuiltIn import BuiltIn
 
-from Browser.utils import find_free_port, FormatterKeywords
+from Browser.utils import FormatterKeywords, close_process_tree, find_free_port
 
 SERVERS: Dict = {}
 
@@ -83,20 +83,8 @@ def start_test_https_server(
 def stop_test_server(port: str):
     global SERVERS
     if port in SERVERS:
-        p = SERVERS[port]
-        if p.poll() is not None:
-            logger.warn(f"process has already exited")
-        else:
-            p.terminate()
-        try:
-            p.wait(timeout=5)
-        except:
-            logger.warn(f"process did not finish in time, killing")
-            p.kill()
-        outs = p.communicate(timeout=5)
-        if p.returncode is not None and p.returncode != 0:
-            logger.warn(f"Process exited with code {p.returncode}, output follows")
-            logger.warn(outs)
+        p: Popen = SERVERS[port]
+        close_process_tree(p)
         del SERVERS[port]
     else:
         logger.warn(f"Server with port {port} not found")
@@ -108,12 +96,12 @@ def get_current_scope_from_lib(keyword: FormatterKeywords) -> list:
     return [formatter.__name__ for formatter in stack.get(keyword.name, list())]
 
 
-def numbers_are_close(number1: int, number2, difference: int) -> bool:
+def numbers_are_close(number1: int, number2: int, difference: int) -> bool:
     """Compares that numbers difference is smaller than difference"""
     size_difference = abs(number1 - number2)
     logger.info(f"Numbers difference is {size_difference}")
-    if size_difference < difference:
+    if size_difference <= difference:
         return True
     raise ValueError(
-        f"Numbers differece is {size_difference}, but it should have been {difference}"
+        f"Numbers difference is {size_difference} {type(size_difference)}, but it should have been {difference} {type(difference)}"
     )

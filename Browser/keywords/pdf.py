@@ -15,7 +15,6 @@ import json
 import sys
 from os import PathLike
 from pathlib import Path
-from typing import Optional, Union
 
 from ..base import LibraryComponent
 from ..generated.playwright_pb2 import Request
@@ -58,7 +57,7 @@ class Pdf(LibraryComponent):
         scale: float = 1,
         tagged: bool = False,
         width: str = "0px",
-    ):
+    ) -> str:
         """Saves page as PDF.
 
         Saving a pdf is currently only supported in Chromium headless.
@@ -95,6 +94,8 @@ class Pdf(LibraryComponent):
 
         headerTemplate and footerTemplate markup have the following limitations: > 1.
         Script tags inside templates are not evaluated. > 2. Page styles are not visible inside templates.
+
+        Returns the path to the saved PDF file.
 
         More details can be found from [https://playwright.dev/docs/api/class-page#page-pdf|Playwright pdf documentation]
 
@@ -150,19 +151,21 @@ class Pdf(LibraryComponent):
     @keyword(tags=("Setter", "PageContent"))
     def emulate_media(
         self,
-        colorScheme: Optional[ColorScheme] = None,
-        forcedColors: Union[ForcedColors, NotSet] = NotSet.not_set,
-        media: Optional[Media] = None,
-        reducedMotion: Optional[ReducedMotion] = None,
-    ):
+        colorScheme: ColorScheme | None = None,
+        forcedColors: ForcedColors | NotSet = NotSet.not_set,
+        media: Media | None = None,
+        reducedMotion: ReducedMotion | None = None,
+    ) -> None:
         """Changes the CSS media type.
 
-        ``CSS media type`` is changed through the media argument,
-        and/or the 'prefers-colors-scheme' media feature, using
-        the colorScheme argument.
+        It changes the CSS media type through the media argument, and/or the 'prefers-colors-scheme' media feature, using the colorScheme argument.
+        This is useful to render the page in the correct format before using `Save Page As Pdf` keyword.
 
-        Useful to render the page in correct format before using
-        `Save Page As Pdf` keyword.
+        | =Arguments= | =Description= |
+        | ``colorScheme`` | Emulates prefers-colors-scheme media feature, supported values are 'light' and 'dark'. Passing null disables color scheme emulation. 'no-preference' is deprecated. |
+        | ``forcedColors`` | Emulates 'forced-colors' media feature, supported values are 'active' and 'none'. Passing null disables forced colors emulation. |
+        | ``media`` | Changes the CSS media type of the page. The only allowed values are 'screen', 'print' and null. Passing null disables CSS media emulation. |
+        | ``reducedMotion`` | Emulates 'prefers-reduced-motion' media feature, supported values are 'reduce', 'no-preference'. Passing null disables reduced motion emulation. |
         """
         with self.playwright.grpc_channel() as stub:
             response = stub.EmulateMedia(

@@ -19,9 +19,16 @@ import { PlaywrightState } from './playwright-state';
 import { Request, Response, Types } from './generated/playwright_pb';
 import { boolResponse, intResponse, jsonResponse, stringResponse } from './response-util';
 import { exists, findLocator } from './playwright-invoke';
+import { logger } from './browser_logger';
 
-import { pino } from 'pino';
-const logger = pino({ timestamp: pino.stdTimeFunctions.isoTime });
+export async function getAriaSnapshot(request: Request.AriaSnapShot, state: PlaywrightState): Promise<Response.String> {
+    const selector = request.getLocator();
+    const strictMode = request.getStrict();
+    const locator = await findLocator(state, selector, strictMode, undefined, true);
+    const snapshot = await locator.ariaSnapshot();
+    logger.info(`Aria snapshot for ${selector}: ${snapshot}`);
+    return stringResponse(snapshot, 'Aria snapshot received successfully.');
+}
 
 export async function getTitle(page: Page): Promise<Response.String> {
     const title = await page.title();

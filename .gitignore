@@ -5,6 +5,7 @@ Browser/__init__.pyi
 Browser/browser.pyi
 Browser/**/*.pyc
 Browser/rfbrowser.log
+**/.DS_Store
 node/playwright-wrapper/generated
 
 docs/Browser.html
@@ -21,6 +22,7 @@ __pycache__
 robotframework_browser.egg-info/
 .venv
 zip_results
+mypy_stub
 
 # utest
 utest/output
@@ -32,6 +34,9 @@ node/.built
 node/dynamic-test-app/.built
 Browser/.linted
 Browser/.installed
+
+browser_batteries/BrowserBatteries/bin/
+browser_batteries/robotframework_browser_batteries.egg-info
 
 # Robot Framework outputs
 log.html

@@ -14,7 +14,7 @@
 
 import json
 from datetime import timedelta
-from typing import Any, Optional
+from typing import Any
 
 from robot.utils import DotDict
 
@@ -27,7 +27,7 @@ class Evaluation(LibraryComponent):
     @keyword(name="Evaluate JavaScript", tags=("Setter", "Getter", "PageContent"))
     def evaluate_javascript(
         self,
-        selector: Optional[str] = None,
+        selector: str | None = None,
         *function: str,
         arg: Any = None,
         all_elements: bool = False,
@@ -115,7 +115,9 @@ class Evaluation(LibraryComponent):
         with self.playwright.grpc_channel() as stub:
             response = stub.HighlightElements(
                 Request().ElementSelectorWithDuration(
-                    selector=self.resolve_selector(selector),
+                    selector=self.resolve_selector(selector)
+                    if selector
+                    else "ROBOT_FRAMEWORK_BROWSER_NO_ELEMENT",
                     duration=int(self.convert_timeout(duration)),
                     width=width,
                     style=style,
@@ -125,10 +127,11 @@ class Evaluation(LibraryComponent):
                 )
             )
         count: int = response.body
-        if count == 0:
-            logger.info("Could not find elements to highlight.")
-        else:
-            logger.info(response.log)
+        if selector:
+            if count == 0:
+                logger.info("Could not find elements to highlight.")
+            else:
+                logger.info(response.log)
         return count
 
     @keyword(tags=("Setter", "PageContent"))
@@ -153,7 +156,7 @@ class Evaluation(LibraryComponent):
         url: str,
         saveAs: str = "",
         wait_for_finished: bool = True,
-        download_timeout: Optional[timedelta] = None,
+        download_timeout: timedelta | None = None,
     ) -> DownloadInfo:
         """Download given url content.
 

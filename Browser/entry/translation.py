@@ -16,7 +16,6 @@ import hashlib
 import inspect
 import json
 from pathlib import Path
-from typing import Optional
 
 KEYWORD_NAME = "Keyword name"
 DOC_CHANGED = "Documentation update needed"
@@ -32,9 +31,9 @@ MAX_REASON_LEN = max(
 
 
 def get_library_translation(
-    plugings: Optional[str] = None, jsextension: Optional[str] = None
+    plugings: str | None = None, jsextension: str | None = None
 ) -> dict:
-    from Browser import Browser
+    from Browser import Browser  # noqa: PLC0415
 
     browser = Browser(plugins=plugings, jsextension=jsextension)
     translation = {}

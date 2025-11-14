@@ -14,7 +14,7 @@
 import re
 from datetime import timedelta
 from enum import Enum, IntFlag, auto
-from typing import Dict, Optional, TypedDict, Union  # noqa: UP035
+from typing import Dict, TypedDict, Union  # noqa: UP035
 
 from robot.running.arguments.typeconverters import TypeConverter
 
@@ -25,7 +25,7 @@ class RobotTypeConverter(TypeConverter):
         if arg_type is None:
             return None
         try:
-            from robot.api import TypeInfo
+            from robot.api import TypeInfo  # noqa: PLC0415
 
             if not isinstance(arg_type, TypeInfo):
                 type_hint = TypeInfo.from_type_hint(arg_type)
@@ -95,6 +95,18 @@ class NotSet(Enum):
     """
 
     not_set = "not_set"
+
+
+class AriaSnapshotReturnType(Enum):
+    """Defines the return type of the AriaSnapshot.
+
+    | =Value=  | =Description= |
+    | ``dict`` | returns the snapshot as a dictionary. |
+    | ``yaml`` | returns the snapshot as a yaml string. |
+    """
+
+    dict = auto()
+    yaml = auto()
 
 
 class KeywordCallStackEntry(TypedDict):
@@ -303,8 +315,8 @@ class ElementRole(Enum):
 class DelayedKeyword:
     def __init__(
         self,
-        name: Union[str, None],
-        original_name: Union[str, None],
+        name: str | None,
+        original_name: str | None,
         args: tuple,
         kwargs: dict,
     ):
@@ -564,7 +576,7 @@ class DownloadInfo(TypedDict):
     saveAs: str
     suggestedFilename: str
     state: str
-    downloadID: Optional[str]
+    downloadID: str | None
 
 
 class NewPageDetails(TypedDict):
@@ -604,10 +616,13 @@ class HighlightMode(Enum):
     This is the classic way to highlight an element of Browser librarary.
 
     ``playwright``: Highlights the element with Playwrights built in function.
+
+    ``both``: Highlights the element with both methods.
     """
 
     border = auto()
     playwright = auto()
+    both = auto()
 
 
 class LambdaFunction:
@@ -664,7 +679,7 @@ FormatingRules.__doc__ = """Enum that defines the available formatters.
 
 # Use Dict instead of dict for setting documenation
 FormatterTypes = Dict[  # noqa: UP006
-    FormatterKeywords, list[Union[FormatingRules, LambdaFunction]]
+    FormatterKeywords, list[FormatingRules | LambdaFunction]
 ]
 FormatterTypes.__doc__ = """Dictionary that defines the formatters for keywords.
 
@@ -682,7 +697,7 @@ Example as literal:
 def ensure_formatter_type(input_dict: dict):
     formatter_type = {}
     for formatter_keyword, rules in input_dict.items():
-        formatter_rules: list[Union[FormatingRules, LambdaFunction]] = []
+        formatter_rules: list[FormatingRules | LambdaFunction] = []
         for rule in rules:
             if isinstance(rule, FormatingRules) or callable(rule):
                 formatter_rules.append(rule)
@@ -887,6 +902,7 @@ ColorScheme = Enum("ColorScheme", ["dark", "light", "no-preference", "null"])
 ColorScheme.__doc__ = """Emulates 'prefers-colors-scheme' media feature.
         Supported values are 'light', 'dark', 'no-preference' and `null`.
         Passing `null` disables color scheme emulation.
+        `no-preference` is deprecated.
 
         See [https://playwright.dev/docs/api/class-page?_highlight=emulatemedia#pageemulatemediaparams |emulateMedia(options)]
         for more details.
@@ -1390,3 +1406,44 @@ class TracingGroupMode(Enum):
     Full = auto()
     Browser = auto()
     Playwright = auto()
+
+
+InstallableBrowser = Enum(
+    "InstallableBrowser",
+    {
+        "chromium": "chromium",
+        "firefox": "firefox",
+        "webkit": "webkit",
+        "chromium-headless-shell": "chromium-headless-shell",
+        "chromium-tip-of-tree-headless-shell": "chromium-tip-of-tree-headless-shell",
+        "chrome": "chrome",
+        "chrome-beta": "chrome-beta",
+        "msedge": "msedge",
+        "msedge-beta": "msedge-beta",
+        "msedge-dev": "msedge-dev",
+    },
+)
+InstallableBrowser.__doc__ = (
+    """Enum of browsers that can be installed with `Install Browser` keyword."""
+)
+
+
+InstallationOptions = Enum(
+    "InstallationOptions",
+    {
+        "with-deps": "--with-deps",
+        "dry-run": "--dry-run",
+        "list": "--list",
+        "force": "--force",
+        "only-shell": "--only-shell",
+        "no-shell": "--no-shell",
+    },
+)
+InstallationOptionsHelp = {
+    "with-deps": "install system dependencies for browsers",
+    "dry-run": "do not execute installation, only print information",
+    "list": "prints list of browsers from all playwright installations",
+    "force": "force reinstall of stable browser channels",
+    "only-shell": "only install headless shell when installing chromium",
+    "no-shell": "do not install chromium headless shell",
+}

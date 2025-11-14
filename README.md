@@ -1,6 +1,6 @@
 # robotframework-browser
 <!-- ALL-CONTRIBUTORS-BADGE:START - Do not remove or modify this section -->
-[![All Contributors](https://img.shields.io/badge/all_contributors-179-orange.svg?style=flat-square)](#contributors-)
+[![All Contributors](https://img.shields.io/badge/all_contributors-193-orange.svg?style=flat-square)](#contributors-)
 <!-- ALL-CONTRIBUTORS-BADGE:END -->
 [![Version](https://img.shields.io/pypi/v/robotframework-browser.svg)](https://pypi.python.org/pypi/robotframework-browser)
 [![Actions Status](https://github.com/MarketSquare/robotframework-browser/workflows/Continuous%20integration/badge.svg)](https://github.com/MarketSquare/robotframework-browser/actions)
@@ -8,7 +8,8 @@
 
 ----
 
-[Robot Framework](https://robotframework.org) Browser library powered by [Playwright](https://playwright.dev/). Propelling browser automation into the future!
+[Robot Framework](https://robotframework.org) Browser library powered by
+[Playwright](https://playwright.dev/). Propelling browser automation into the future!
 
 Aiming for :rocket: speed, :white_check_mark: reliability and :microscope: visibility.
 
@@ -17,9 +18,38 @@ See [keyword documentation](https://marketsquare.github.io/robotframework-browse
 
 # Installation instructions
 
-Only Python 3.9 or newer is supported. From Node side 18, 20 and 22 LTS versions are supported.
+For both installation options only Python 3.10 or newer is supported. There are two main ways
+to install Browser library, with or without user having NodeJS installed.
 
-1. Install node.js e.g. from https://nodejs.org/en/download/
+The easiest way to install the Browser library is to use the
+[robotframework-browser-batteries](https://pypi.org/project/robotframework-browser-batteries/)
+package (BrowserBatteries). BrowserBatteries contains precompiled NodeJS binaries and
+NodeJS [dependencies](./package.json), so that users do not need to install NodeJS or its
+Node-side dependencies by them self.
+
+Limitations:
+- BrowserBatteries may not be available for every operating system or processor architecture.
+- If you develop plugins that require third-party NodeJS modules, those modules are not
+  compiled into the BrowserBatteries package.
+
+See [Installation without NodeJS](#installation-without-nodejs) for more details.
+
+If BrowserBatteries package is not suitable for you, for some reason, then you need to install NodeJS, install
+[robotframework-browser](https://pypi.org/project/robotframework-browser/)
+and install NodeJS dependencies. See more detail in
+[Installation with NodeJS](#nstallation-with-NodeJS) chapter
+
+## Installation without NodeJS
+1. Update pip `pip install -U pip` to ensure latest version is used
+2. Install robotframework-browser and robotframework-browser-batteries from the commandline:
+`pip install robotframework-browser[bb]`
+3. Install the Playwright browser binaries, run: `rfbrowser install`
+  - if `rfbrowser` is not found, try `python -m Browser.entry install`
+
+## Installation with NodeJS
+From Node side 20, 22 and 24 LTS versions are supported.
+
+1. Install NodeJS e.g. from https://nodejs.org/en/download/
 2. Update pip `pip install -U pip` to ensure latest version is used
 3. Install robotframework-browser from the commandline: `pip install robotframework-browser`
 4. Install the node dependencies: run `rfbrowser init` in your shell
@@ -27,12 +57,17 @@ Only Python 3.9 or newer is supported. From Node side 18, 20 and 22 LTS versions
 
 Please note that by default Chromium, Firefox and WebKit browser are installed, even those would be already
 installed in the system. The installation size depends on the operating system, but usually is +700Mb.
-It is possible to skip browser binaries installation with `rfbrowser init --skip-browsers` command, but then user
-is responsible for browser binary installation. It is possible to install only selected browser binaries by adding
+It is possible to skip browser binaries installation with `rfbrowser install-browser --skip-browsers`
+or `rfbrowser init --skip-browsers` command, but then user is responsible for Playwright browser binary
+installation. It is possible to install only selected browser binaries by adding
 `chromium`, `firefox` or `webkit` as arguments to init command. Example `rfbrowser init firefox` would install
-only Firefox binaries and `rfbrowser init firefox chromium` would install both Firefox and Chromium binaries.
+only Firefox binaries and `rfbrowser install-browser firefox chromium` would install both Firefox and
+Chromium binaries.
 
-Or use the [docker images](https://github.com/MarketSquare/robotframework-browser/pkgs/container/robotframework-browser%2Frfbrowser-stable). Documented at [docker/README.md](https://github.com/MarketSquare/robotframework-browser/blob/main/docker/README.md).
+Or use the
+[docker images](https://github.com/MarketSquare/robotframework-browser/pkgs/container/robotframework-browser%2Frfbrowser-stable)
+. Documented at
+[docker/README.md](https://github.com/MarketSquare/robotframework-browser/blob/main/docker/README.md).
 
 ## Install with transformer
 
@@ -45,7 +80,17 @@ by Browser library can be run with command: `rfbrowser transform --transformer-n
 keyword to `Wait For Load State` keyword. To see full list of transformers provided by Browser library, run
 command: `rfbrowser transform --help`.
 
-## Update instructions
+## Update instructions without NodeJS
+
+To upgrade your already installed robotframework-browser and robotframework-browser-batteries follow steps
+in below. Please note that robotframework-browser and robotframework-browser-batteries packages are
+tied together and having different versions of these packages is not supported.
+
+1. Update from commandline: `pip install -U robotframework-browser robotframework-browser-batteries`
+2. Clean old node side dependencies and browser binaries: `rfbrowser clean-node`
+3. Install the node dependencies for the newly installed version: `rfbrowser install`
+
+## Update instructions with NodeJS
 
 To upgrade your already installed robotframework-browser library
 
@@ -57,8 +102,10 @@ To upgrade your already installed robotframework-browser library
 
 To completely uninstall library, including the browser binaries installed by Playwright,
 run following commands:
+
 1. Clean old node side dependencies and browser binaries: `rfbrowser clean-node`
 2. Uninstall with pip: `pip uninstall robotframework-browser`
+3. If you have BrowserBatteries installed, also run: `pip uninstall robotframework-browser-batteries`
 
 # Examples
 
@@ -355,13 +402,13 @@ Supported by [Robocorp](https://robocorp.com/) through [Robot Framework Foundati
       <td align="center" valign="top" width="14.28%"><a href="https://github.com/TWijesundera"><img src="https://avatars.githubusercontent.com/u/21339656?v=4?s=100" width="100px;" alt="Thisara Wijesundera"/><br /><sub><b>Thisara Wijesundera</b></sub></a><br /><a href="#ideas-TWijesundera" title="Ideas, Planning, & Feedback">🤔</a></td>
       <td align="center" valign="top" width="14.28%"><a href="https://github.com/masudparvez"><img src="https://avatars.githubusercontent.com/u/3022096?v=4?s=100" width="100px;" alt="masudparvez"/><br /><sub><b>masudparvez</b></sub></a><br /><a href="#ideas-masudparvez" title="Ideas, Planning, & Feedback">🤔</a></td>
       <td align="center" valign="top" width="14.28%"><a href="https://github.com/gitkatsi"><img src="https://avatars.githubusercontent.com/u/30192727?v=4?s=100" width="100px;" alt="gitkatsi"/><br /><sub><b>gitkatsi</b></sub></a><br /><a href="https://github.com/MarketSquare/robotframework-browser/issues?q=author%3Agitkatsi" title="Bug reports">🐛</a> <a href="https://github.com/MarketSquare/robotframework-browser/commits?author=gitkatsi" title="Code">💻</a></td>
-      <td align="center" valign="top" width="14.28%"><a href="https://github.com/manykarim"><img src="https://avatars.githubusercontent.com/u/61293164?v=4?s=100" width="100px;" alt="Many Kasiriha"/><br /><sub><b>Many Kasiriha</b></sub></a><br /><a href="https://github.com/MarketSquare/robotframework-browser/issues?q=author%3Amanykarim" title="Bug reports">🐛</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/manykarim"><img src="https://avatars.githubusercontent.com/u/61293164?v=4?s=100" width="100px;" alt="Many Kasiriha"/><br /><sub><b>Many Kasiriha</b></sub></a><br /><a href="https://github.com/MarketSquare/robotframework-browser/issues?q=author%3Amanykarim" title="Bug reports">🐛</a> <a href="#ideas-manykarim" title="Ideas, Planning, & Feedback">🤔</a></td>
     </tr>
     <tr>
       <td align="center" valign="top" width="14.28%"><a href="https://github.com/thulasiraju"><img src="https://avatars.githubusercontent.com/u/21201594?v=4?s=100" width="100px;" alt="Thulasi Raju"/><br /><sub><b>Thulasi Raju</b></sub></a><br /><a href="https://github.com/MarketSquare/robotframework-browser/commits?author=thulasiraju" title="Documentation">📖</a></td>
       <td align="center" valign="top" width="14.28%"><a href="https://iliketomatoes.com/"><img src="https://avatars.githubusercontent.com/u/2039028?v=4?s=100" width="100px;" alt="Giancarlo Soverini"/><br /><sub><b>Giancarlo Soverini</b></sub></a><br /><a href="#ideas-iliketomatoes" title="Ideas, Planning, & Feedback">🤔</a></td>
       <td align="center" valign="top" width="14.28%"><a href="https://github.com/lennartq"><img src="https://avatars.githubusercontent.com/u/22813828?v=4?s=100" width="100px;" alt="lennartq"/><br /><sub><b>lennartq</b></sub></a><br /><a href="https://github.com/MarketSquare/robotframework-browser/commits?author=lennartq" title="Code">💻</a></td>
-      <td align="center" valign="top" width="14.28%"><a href="https://github.com/falcon030"><img src="https://avatars.githubusercontent.com/u/30448651?v=4?s=100" width="100px;" alt="Lukas Boekenoogen"/><br /><sub><b>Lukas Boekenoogen</b></sub></a><br /><a href="https://github.com/MarketSquare/robotframework-browser/commits?author=falcon030" title="Documentation">📖</a> <a href="https://github.com/MarketSquare/robotframework-browser/commits?author=falcon030" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/falcon030"><img src="https://avatars.githubusercontent.com/u/30448651?v=4?s=100" width="100px;" alt="Lukas Boekenoogen"/><br /><sub><b>Lukas Boekenoogen</b></sub></a><br /><a href="https://github.com/MarketSquare/robotframework-browser/commits?author=falcon030" title="Documentation">📖</a> <a href="https://github.com/MarketSquare/robotframework-browser/commits?author=falcon030" title="Code">💻</a> <a href="https://github.com/MarketSquare/robotframework-browser/issues?q=author%3Afalcon030" title="Bug reports">🐛</a></td>
       <td align="center" valign="top" width="14.28%"><a href="https://github.com/anacomparada"><img src="https://avatars.githubusercontent.com/u/166409747?v=4?s=100" width="100px;" alt="anacomparada"/><br /><sub><b>anacomparada</b></sub></a><br /><a href="https://github.com/MarketSquare/robotframework-browser/issues?q=author%3Aanacomparada" title="Bug reports">🐛</a> <a href="https://github.com/MarketSquare/robotframework-browser/commits?author=anacomparada" title="Documentation">📖</a></td>
       <td align="center" valign="top" width="14.28%"><a href="https://github.com/siongwai"><img src="https://avatars.githubusercontent.com/u/112995767?v=4?s=100" width="100px;" alt="siongwai"/><br /><sub><b>siongwai</b></sub></a><br /><a href="#ideas-siongwai" title="Ideas, Planning, & Feedback">🤔</a> <a href="https://github.com/MarketSquare/robotframework-browser/issues?q=author%3Asiongwai" title="Bug reports">🐛</a></td>
       <td align="center" valign="top" width="14.28%"><a href="https://github.com/nfaustin"><img src="https://avatars.githubusercontent.com/u/3782948?v=4?s=100" width="100px;" alt="nfaustin"/><br /><sub><b>nfaustin</b></sub></a><br /><a href="https://github.com/MarketSquare/robotframework-browser/issues?q=author%3Anfaustin" title="Bug reports">🐛</a></td>
@@ -407,6 +454,24 @@ Supported by [Robocorp](https://robocorp.com/) through [Robot Framework Foundati
       <td align="center" valign="top" width="14.28%"><a href="https://github.com/node137"><img src="https://avatars.githubusercontent.com/u/101278079?v=4?s=100" width="100px;" alt="node137"/><br /><sub><b>node137</b></sub></a><br /><a href="https://github.com/MarketSquare/robotframework-browser/issues?q=author%3Anode137" title="Bug reports">🐛</a></td>
       <td align="center" valign="top" width="14.28%"><a href="https://github.com/barambulka"><img src="https://avatars.githubusercontent.com/u/164974059?v=4?s=100" width="100px;" alt="barambulka"/><br /><sub><b>barambulka</b></sub></a><br /><a href="#ideas-barambulka" title="Ideas, Planning, & Feedback">🤔</a></td>
       <td align="center" valign="top" width="14.28%"><a href="https://github.com/timdegroot1996"><img src="https://avatars.githubusercontent.com/u/11198755?v=4?s=100" width="100px;" alt="timdegroot"/><br /><sub><b>timdegroot</b></sub></a><br /><a href="https://github.com/MarketSquare/robotframework-browser/commits?author=timdegroot1996" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/montsamu"><img src="https://avatars.githubusercontent.com/u/134346?v=4?s=100" width="100px;" alt="Samuel Montgomery-Blinn"/><br /><sub><b>Samuel Montgomery-Blinn</b></sub></a><br /><a href="https://github.com/MarketSquare/robotframework-browser/commits?author=montsamu" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/chevallier-xpl"><img src="https://avatars.githubusercontent.com/u/110472200?v=4?s=100" width="100px;" alt="Paul Chevallier"/><br /><sub><b>Paul Chevallier</b></sub></a><br /><a href="https://github.com/MarketSquare/robotframework-browser/issues?q=author%3Achevallier-xpl" title="Bug reports">🐛</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/JaakkoPakarinen"><img src="https://avatars.githubusercontent.com/u/211503503?v=4?s=100" width="100px;" alt="JaakkoPakarinen"/><br /><sub><b>JaakkoPakarinen</b></sub></a><br /><a href="#ideas-JaakkoPakarinen" title="Ideas, Planning, & Feedback">🤔</a></td>
+    </tr>
+    <tr>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/cj36457"><img src="https://avatars.githubusercontent.com/u/172324801?v=4?s=100" width="100px;" alt="Matias Perichon"/><br /><sub><b>Matias Perichon</b></sub></a><br /><a href="#ideas-cj36457" title="Ideas, Planning, & Feedback">🤔</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/Brownies"><img src="https://avatars.githubusercontent.com/u/3786418?v=4?s=100" width="100px;" alt="Lassi Heikkinen"/><br /><sub><b>Lassi Heikkinen</b></sub></a><br /><a href="#ideas-Brownies" title="Ideas, Planning, & Feedback">🤔</a> <a href="https://github.com/MarketSquare/robotframework-browser/commits?author=Brownies" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/mauricekoster"><img src="https://avatars.githubusercontent.com/u/4836127?v=4?s=100" width="100px;" alt="Maurice Koster"/><br /><sub><b>Maurice Koster</b></sub></a><br /><a href="https://github.com/MarketSquare/robotframework-browser/issues?q=author%3Amauricekoster" title="Bug reports">🐛</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://kitsiosk.github.io"><img src="https://avatars.githubusercontent.com/u/20650935?v=4?s=100" width="100px;" alt="Kitsios Konstantinos"/><br /><sub><b>Kitsios Konstantinos</b></sub></a><br /><a href="https://github.com/MarketSquare/robotframework-browser/commits?author=kitsiosk" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/tobiasBora"><img src="https://avatars.githubusercontent.com/u/2164118?v=4?s=100" width="100px;" alt="Tobias Bora"/><br /><sub><b>Tobias Bora</b></sub></a><br /><a href="https://github.com/MarketSquare/robotframework-browser/issues?q=author%3AtobiasBora" title="Bug reports">🐛</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/frste"><img src="https://avatars.githubusercontent.com/u/50555939?v=4?s=100" width="100px;" alt="Frank Stenzhorn"/><br /><sub><b>Frank Stenzhorn</b></sub></a><br /><a href="https://github.com/MarketSquare/robotframework-browser/issues?q=author%3Afrste" title="Bug reports">🐛</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="http://www.lakitna.nl/"><img src="https://avatars.githubusercontent.com/u/22448210?v=4?s=100" width="100px;" alt="Sander van Beek"/><br /><sub><b>Sander van Beek</b></sub></a><br /><a href="https://github.com/MarketSquare/robotframework-browser/issues?q=author%3ALakitna" title="Bug reports">🐛</a> <a href="https://github.com/MarketSquare/robotframework-browser/commits?author=Lakitna" title="Code">💻</a></td>
+    </tr>
+    <tr>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/johndoorzon"><img src="https://avatars.githubusercontent.com/u/11929554?v=4?s=100" width="100px;" alt="Sebastiaan Molenaar"/><br /><sub><b>Sebastiaan Molenaar</b></sub></a><br /><a href="https://github.com/MarketSquare/robotframework-browser/issues?q=author%3Ajohndoorzon" title="Bug reports">🐛</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="http://blog.davidsommers.com"><img src="https://avatars.githubusercontent.com/u/12738?v=4?s=100" width="100px;" alt="David Sommers"/><br /><sub><b>David Sommers</b></sub></a><br /><a href="https://github.com/MarketSquare/robotframework-browser/commits?author=databyte" title="Code">💻</a> <a href="#ideas-databyte" title="Ideas, Planning, & Feedback">🤔</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/MailChailBail"><img src="https://avatars.githubusercontent.com/u/238522466?v=4?s=100" width="100px;" alt="Alfred_Bail"/><br /><sub><b>Alfred_Bail</b></sub></a><br /><a href="https://github.com/MarketSquare/robotframework-browser/issues?q=author%3AMailChailBail" title="Bug reports">🐛</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/eslamelmishtawy"><img src="https://avatars.githubusercontent.com/u/20448355?v=4?s=100" width="100px;" alt="Eslam Elmishtawy"/><br /><sub><b>Eslam Elmishtawy</b></sub></a><br /><a href="#ideas-eslamelmishtawy" title="Ideas, Planning, & Feedback">🤔</a></td>
     </tr>
   </tbody>
 </table>

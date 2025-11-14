@@ -23,7 +23,7 @@ import types
 from concurrent.futures._base import Future
 from datetime import timedelta
 from pathlib import Path
-from typing import Any, Literal, Optional, Union
+from typing import Any, Literal
 
 from assertionengine import AssertionOperator
 from overrides import overrides
@@ -67,6 +67,7 @@ from .utils import (
     is_falsy,
     keyword,
     logger,
+    suppress_logging,
 )
 
 # Importing this directly from .utils break the stub type checks
@@ -797,20 +798,19 @@ class Browser(DynamicCore):
         *_,
         auto_closing_level: AutoClosingLevel = AutoClosingLevel.TEST,
         auto_delete_passed_tracing: bool = False,
-        enable_playwright_debug: Union[
-            PlaywrightLogTypes, bool
-        ] = PlaywrightLogTypes.library,
-        enable_presenter_mode: Union[HighLightElement, bool] = False,
-        external_browser_executable: Optional[dict[SupportedBrowsers, str]] = None,
-        jsextension: Union[list[str], str, None] = None,
-        language: Optional[str] = None,
-        playwright_process_host: Optional[str] = None,
-        playwright_process_port: Optional[int] = None,
-        plugins: Union[list[str], str, None] = None,
+        enable_playwright_debug: PlaywrightLogTypes | bool = PlaywrightLogTypes.library,
+        enable_presenter_mode: HighLightElement | bool = False,
+        external_browser_executable: dict[SupportedBrowsers, str] | None = None,
+        highlight_on_failure: bool = False,
+        jsextension: list[str] | str | None = None,
+        language: str | None = None,
+        playwright_process_host: str | None = None,
+        playwright_process_port: int | None = None,
+        plugins: list[str] | str | None = None,
         retry_assertions_for: timedelta = timedelta(seconds=1),
         run_on_failure: str = "Take Screenshot  fail-screenshot-{index}",
-        selector_prefix: Optional[str] = None,
-        show_keyword_call_banner: Optional[bool] = None,
+        selector_prefix: str | None = None,
+        show_keyword_call_banner: bool | None = None,
         strict: bool = True,
         timeout: timedelta = timedelta(seconds=10),
         tracing_group_mode: TracingGroupMode = TracingGroupMode.Full,
@@ -823,6 +823,7 @@ class Browser(DynamicCore):
         | ``enable_playwright_debug``       | Enable low level debug information from the playwright to playwright-log.txt file. For more details, see `PlaywrightLogTypes`. |
         | ``enable_presenter_mode``         | Automatic highlights the interacted components, slowMo and a small pause at the end. Can be enabled by giving True or can be customized by giving a dictionary: `{"duration": "2 seconds", "width": "2px", "style": "dotted", "color": "blue"}` Where `duration` is time format in Robot Framework format, defaults to 2 seconds. `width` is width of the marker in pixels, defaults the `2px`. `style` is the style of border, defaults to `dotted`. `color` is the color of the marker, defaults to `blue`. By default, the call banner keyword is also enabled unless explicitly disabled. |
         | ``external_browser_executable``   | Dict mapping name of browser to path of executable of a browser. Will make opening new browsers of the given type use the set executablePath. Currently only configuring of `chromium` to a separate executable (chrome, chromium and Edge executables all work with recent versions) works. |
+        | ``highlight_on_failure``          | If set to ``True``, will highlight the element in the screenshot when a keyword fails, by highlighting the selector used in the failed keyword. If set to ``False``, will not highlight the element. |
         | ``jsextension``                   | Path to Javascript modules exposed as extra keywords. The modules must be in CommonJS. It can either be a single path, a comma-separated lists of path or a real list of strings |
         | ``language``                      | Defines language which is used to translate keyword names and documentation. |
         | ``playwright_process_host``       | Hostname / Host address which should be used when spawning the Playwright process. Defaults to 127.0.0.1. |
@@ -841,7 +842,7 @@ class Browser(DynamicCore):
         self.ROBOT_LIBRARY_LISTENER = self
         self.scope_stack: dict = {}
         self.suite_ids: dict[str, None] = {}
-        self.current_test_id: Optional[str] = None
+        self.current_test_id: str | None = None
         self._playwright_state: PlaywrightState = PlaywrightState(self)
         self._browser_control = Control(self)
         self._assertion_formatter = Formatter(self)
@@ -877,7 +878,7 @@ class Browser(DynamicCore):
             self._playwright_log = None
         else:
             self._playwright_log = self._get_log_file_name()
-        self._playwright: Optional[Playwright] = None
+        self._playwright: Playwright | None = None
         self._auto_closing_level = auto_closing_level
         self.auto_delete_passed_tracing = auto_delete_passed_tracing
         # Parsing needs keywords to be discovered.
@@ -897,14 +898,14 @@ class Browser(DynamicCore):
             self._plugin_keywords = parser.get_plugin_keywords(parsed_plugins)
         else:
             self._plugin_keywords = []
-        self.presenter_mode: Union[HighLightElement, bool] = enable_presenter_mode
+        self.presenter_mode: HighLightElement | bool = enable_presenter_mode
         self.tracing_group_mode = tracing_group_mode
         self._execution_stack: list[dict] = []
         self._running_on_failure_keyword = False
         self.pause_on_failure: set[str] = set()
         self._unresolved_promises: set[Future] = set()
         self._keyword_formatters: dict = {}
-        self._current_loglevel: Optional[str] = None
+        self._current_loglevel: str | None = None
         self.is_test_case_running = False
         self.auto_closing_default_run_before_unload: bool = False
         self.keyword_call_stack: list[KeywordCallStackEntry] = []
@@ -927,6 +928,9 @@ class Browser(DynamicCore):
         self.scope_stack["selector_prefix"] = SettingsStack(selector_prefix, self)
         self.scope_stack["run_on_failure"] = SettingsStack(
             self._parse_run_on_failure_keyword(run_on_failure), self
+        )
+        self.scope_stack["highlight_on_failure"] = SettingsStack(
+            highlight_on_failure, self
         )
         self.scope_stack["show_keyword_call_banner"] = SettingsStack(
             show_keyword_call_banner, self
@@ -959,12 +963,14 @@ class Browser(DynamicCore):
         return self.scope_stack["run_on_failure"].get()
 
     @property
+    def highlight_on_failure(self) -> bool:
+        return self.scope_stack["highlight_on_failure"].get()
+
+    @property
     def timeout(self):
         return self.scope_stack["timeout"].get()
 
-    def _parse_run_on_failure_keyword(
-        self, keyword: Union[str, None]
-    ) -> DelayedKeyword:
+    def _parse_run_on_failure_keyword(self, keyword: str | None) -> DelayedKeyword:
         if keyword is None or is_falsy(keyword):
             return DelayedKeyword(None, None, (), {})
         parts = keyword.split("  ")
@@ -997,13 +1003,12 @@ class Browser(DynamicCore):
             response.keywords,
             response.keywordArguments,
             response.keywordDocumentations,
+            strict=False,
         ):
             self._jskeyword_call(component, name, args, doc)
         return component
 
-    def init_js_extension(
-        self, js_extension_path: Union[Path, str]
-    ) -> Response.Keywords:
+    def init_js_extension(self, js_extension_path: Path | str) -> Response.Keywords:
         with self.playwright.grpc_channel() as stub:
             return stub.InitializeExtension(
                 Request().FilePath(
@@ -1181,9 +1186,13 @@ def {name}(self, {", ".join(argument_names_and_default_values_texts)}):
             except ConnectionError as e:
                 logger.trace(f"Browser._start_test connection problem: {e}")
 
-    def _resolve_path(self, attrs: dict) -> Union[Path, None]:
-        source = Path(attrs["source"])
-        if source.is_dir():
+    def _resolve_path(self, attrs: dict) -> Path | None:
+        source = (
+            Path(attrs["source"])
+            if "source" in attrs and attrs["source"] is not None
+            else None
+        )
+        if source is not None and source.is_dir():
             source = source / "__init__.robot"
             if not source.exists():
                 return None
@@ -1225,7 +1234,7 @@ def {name}(self, {", ".join(argument_names_and_default_values_texts)}):
         self,
         name: str,
         args: list,
-        source: Union[str, Path, None],
+        source: str | Path | None,
         lineno: int,
         typ: str,
     ) -> KeywordCallStackEntry:
@@ -1253,7 +1262,8 @@ def {name}(self, {", ".join(argument_names_and_default_values_texts)}):
                 self._playwright_state.open_trace_group(**(self.keyword_call_stack[-1]))
             return DynamicCore.run_keyword(self, name, args, kwargs)
         except AssertionError as e:
-            self.keyword_error()
+            selector = self._get_selector_value_from_keyword_call(name, args, kwargs)
+            self.keyword_error(selector)
             e.args = self._alter_keyword_error(name, e.args)
             if self.pause_on_failure and sys.__stdout__ is not None:
                 sys.__stdout__.write(f"\n[ FAIL ] {e}")
@@ -1269,6 +1279,24 @@ def {name}(self, {", ".join(argument_names_and_default_values_texts)}):
                 and self.keyword_call_stack
             ):
                 self._playwright_state.close_trace_group()
+
+    def _get_selector_value_from_keyword_call(self, name, args, kwargs):
+        selector = kwargs.get("selector")
+        if not selector and args:
+            arguments = self.get_keyword_arguments(name)
+            for i, arg in enumerate(args):
+                if isinstance(arg, str) and arg.startswith("*"):
+                    break
+                if (
+                    isinstance(arguments[i], str)
+                    and arguments[i].startswith("selector")
+                ) or (
+                    isinstance(arguments[i], tuple)
+                    and arguments[i][0].startswith("selector")
+                ):
+                    selector = arg
+                    break
+        return selector
 
     def get_keyword_tags(self, name: str) -> list:
         tags = list(DynamicCore.get_keyword_tags(self, name))
@@ -1401,7 +1429,7 @@ def {name}(self, {", ".join(argument_names_and_default_values_texts)}):
             re.VERBOSE,
         )
         clean_message = ansi_escape.sub("", args[0])
-        return (clean_message,) + args[1:]
+        return (clean_message, *args[1:])
 
     def _set_logging(self, status: bool):
         try:
@@ -1448,7 +1476,7 @@ def {name}(self, {", ".join(argument_names_and_default_values_texts)}):
                 )
             )
 
-    def keyword_error(self):
+    def keyword_error(self, selector):
         """Runs keyword on failure."""
         if self._running_on_failure_keyword or not self.run_on_failure_keyword.name:
             return
@@ -1456,6 +1484,13 @@ def {name}(self, {", ".join(argument_names_and_default_values_texts)}):
         varargs = self.run_on_failure_keyword.args
         kwargs = self.run_on_failure_keyword.kwargs
         try:
+            if selector and self.highlight_on_failure:
+                with suppress_logging():
+                    BuiltIn()._variables.set_suite(
+                        "${ROBOT_FRAMEWORK_BROWSER_FAILING_SELECTOR}",
+                        selector,
+                        children=False,
+                    )
             if self.run_on_failure_keyword.name in self.keywords:
                 if (
                     self.run_on_failure_keyword.name == "take_screenshot"
@@ -1488,6 +1523,13 @@ def {name}(self, {", ".join(argument_names_and_default_values_texts)}):
                     "playwright-log.txt is not created, consider enabling it for debug reasons."
                 )
             self._running_on_failure_keyword = False
+            if selector and self.highlight_on_failure:
+                with suppress_logging():
+                    BuiltIn()._variables.set_suite(
+                        "${ROBOT_FRAMEWORK_BROWSER_FAILING_SELECTOR}",
+                        None,
+                        children=False,
+                    )
 
     def _failure_screenshot_path(self):
         valid_chars = f"-_.() {string.ascii_letters}{string.digits}"
@@ -1504,14 +1546,12 @@ def {name}(self, {", ".join(argument_names_and_default_values_texts)}):
             )
         )
 
-    def get_timeout(self, timeout: Union[timedelta, None]) -> float:
+    def get_timeout(self, timeout: timedelta | None) -> float:
         if timeout is None:
             return self.scope_stack["timeout"].get()
         return self.convert_timeout(timeout)
 
-    def convert_timeout(
-        self, timeout: Union[timedelta, float], to_ms: bool = True
-    ) -> float:
+    def convert_timeout(self, timeout: timedelta | float, to_ms: bool = True) -> float:
         convert = 1000 if to_ms else 1
         if isinstance(timeout, timedelta):
             return timeout.total_seconds() * convert
@@ -1555,7 +1595,7 @@ def {name}(self, {", ".join(argument_names_and_default_values_texts)}):
         return True
 
     @staticmethod
-    def _get_translation(language: Union[str, None]) -> Union[Path, None]:
+    def _get_translation(language: str | None) -> Path | None:
         if not language:
             return None
         discovered_plugins = {
@@ -1574,3 +1614,10 @@ def {name}(self, {", ".join(argument_names_and_default_values_texts)}):
                     if item.get("language", "").lower() == lang and item.get("path"):
                         return Path(item.get("path")).absolute()
         return None
+
+    def execute_npx_playwright(
+        self,
+        command: str,
+        *args: str,
+    ):
+        self._browser_control.execute_npx_playwright(command, *args)

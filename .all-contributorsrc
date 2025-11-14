@@ -1299,7 +1299,8 @@
       "avatar_url": "https://avatars.githubusercontent.com/u/61293164?v=4",
       "profile": "https://github.com/manykarim",
       "contributions": [
-        "bug"
+        "bug",
+        "ideas"
       ]
     },
     {
@@ -1336,7 +1337,8 @@
       "profile": "https://github.com/falcon030",
       "contributions": [
         "doc",
-        "code"
+        "code",
+        "bug"
       ]
     },
     {
@@ -1655,6 +1657,135 @@
       "profile": "https://github.com/timdegroot1996",
       "contributions": [
         "code"
+      ]
+    },
+    {
+      "login": "montsamu",
+      "name": "Samuel Montgomery-Blinn",
+      "avatar_url": "https://avatars.githubusercontent.com/u/134346?v=4",
+      "profile": "https://github.com/montsamu",
+      "contributions": [
+        "code"
+      ]
+    },
+    {
+      "login": "chevallier-xpl",
+      "name": "Paul Chevallier",
+      "avatar_url": "https://avatars.githubusercontent.com/u/110472200?v=4",
+      "profile": "https://github.com/chevallier-xpl",
+      "contributions": [
+        "bug"
+      ]
+    },
+    {
+      "login": "JaakkoPakarinen",
+      "name": "JaakkoPakarinen",
+      "avatar_url": "https://avatars.githubusercontent.com/u/211503503?v=4",
+      "profile": "https://github.com/JaakkoPakarinen",
+      "contributions": [
+        "ideas"
+      ]
+    },
+    {
+      "login": "cj36457",
+      "name": "Matias Perichon",
+      "avatar_url": "https://avatars.githubusercontent.com/u/172324801?v=4",
+      "profile": "https://github.com/cj36457",
+      "contributions": [
+        "ideas"
+      ]
+    },
+    {
+      "login": "Brownies",
+      "name": "Lassi Heikkinen",
+      "avatar_url": "https://avatars.githubusercontent.com/u/3786418?v=4",
+      "profile": "https://github.com/Brownies",
+      "contributions": [
+        "ideas",
+        "code"
+      ]
+    },
+    {
+      "login": "mauricekoster",
+      "name": "Maurice Koster",
+      "avatar_url": "https://avatars.githubusercontent.com/u/4836127?v=4",
+      "profile": "https://github.com/mauricekoster",
+      "contributions": [
+        "bug"
+      ]
+    },
+    {
+      "login": "kitsiosk",
+      "name": "Kitsios Konstantinos",
+      "avatar_url": "https://avatars.githubusercontent.com/u/20650935?v=4",
+      "profile": "https://kitsiosk.github.io",
+      "contributions": [
+        "code"
+      ]
+    },
+    {
+      "login": "tobiasBora",
+      "name": "Tobias Bora",
+      "avatar_url": "https://avatars.githubusercontent.com/u/2164118?v=4",
+      "profile": "https://github.com/tobiasBora",
+      "contributions": [
+        "bug"
+      ]
+    },
+    {
+      "login": "frste",
+      "name": "Frank Stenzhorn",
+      "avatar_url": "https://avatars.githubusercontent.com/u/50555939?v=4",
+      "profile": "https://github.com/frste",
+      "contributions": [
+        "bug"
+      ]
+    },
+    {
+      "login": "Lakitna",
+      "name": "Sander van Beek",
+      "avatar_url": "https://avatars.githubusercontent.com/u/22448210?v=4",
+      "profile": "http://www.lakitna.nl/",
+      "contributions": [
+        "bug",
+        "code"
+      ]
+    },
+    {
+      "login": "johndoorzon",
+      "name": "Sebastiaan Molenaar",
+      "avatar_url": "https://avatars.githubusercontent.com/u/11929554?v=4",
+      "profile": "https://github.com/johndoorzon",
+      "contributions": [
+        "bug"
+      ]
+    },
+    {
+      "login": "databyte",
+      "name": "David Sommers",
+      "avatar_url": "https://avatars.githubusercontent.com/u/12738?v=4",
+      "profile": "http://blog.davidsommers.com",
+      "contributions": [
+        "code",
+        "ideas"
+      ]
+    },
+    {
+      "login": "MailChailBail",
+      "name": "Alfred_Bail",
+      "avatar_url": "https://avatars.githubusercontent.com/u/238522466?v=4",
+      "profile": "https://github.com/MailChailBail",
+      "contributions": [
+        "bug"
+      ]
+    },
+    {
+      "login": "eslamelmishtawy",
+      "name": "Eslam Elmishtawy",
+      "avatar_url": "https://avatars.githubusercontent.com/u/20448355?v=4",
+      "profile": "https://github.com/eslamelmishtawy",
+      "contributions": [
+        "ideas"
       ]
     }
   ],
